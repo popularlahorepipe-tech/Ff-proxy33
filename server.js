@@ -262,7 +262,7 @@ async function sendTgRequest(method, payload, fileData = null) {
             lastErr = e.code === 'ECONNRESET' ? 'Connection Reset' : (e.response ? `HTTP ${e.response.status}` : e.message);
         }
     }
-    appendLog(`<span class="text-red-500 font-medium">⚠️ TG Communications Failed: ${lastErr}</span>`);
+    appendLog(`<span class="text-red-500 font-bold">> TG_COMMS_FAILED: ${lastErr}</span>`);
     return false;
 }
 
@@ -272,7 +272,7 @@ async function sendTelegramScreenshot(base64Image, uid, name, isError = false, o
     let caption = overrideCaption || (isError ? `❌ Activation Error/Block!\n\n👤 Name: ${name}\n🆔 UID: ${uid}\n⏱️ Time (PKT): ${getPKTTime()}` : `✅ Target Activated!\n\n👤 Name: ${name}\n🆔 UID: ${uid}\n⏱️ Time (PKT): ${getPKTTime()}`);
     
     const res = await sendTgRequest("sendPhoto", { chat_id: TG_CHAT_ID, caption }, { fieldName: 'photo', buffer, filename: 'ss.jpg' });
-    if(res) appendLog(`<span class="${isError ? 'text-red-500' : 'text-green-500'}">📲 Image delivered securely.</span>`);
+    if(res) appendLog(`<span class="${isError ? 'text-red-500' : 'text-green-500'}">> IMAGE_DELIVERED.</span>`);
     return res;
 }
 
@@ -1903,12 +1903,38 @@ async function runGhostActivator(uid, name) {
             }
         });
 
-        await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
+        // Use more realistic user agent to pass CF
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         page.on('dialog', async dialog => { await dialog.dismiss(); }); 
 
         await page.goto('https://unlockffbeta.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
         sysLog('<span class="text-blue-400 font-bold">> TARGET_LOCKED. DOM_INJECTED.</span>');
         await saveMatrixScreen("INIT_DOM_LOAD");
+        
+        // ==========================================
+        // CLOUDFLARE ANTI-BOT BYPASS LOOP (FIXED)
+        // ==========================================
+        sysLog('<span class="text-yellow-500 font-bold">> CHECKING_SECURITY_WALL...</span>');
+        for(let c = 0; c < 15; c++) {
+            const text = await page.evaluate(() => document.body.innerText || '');
+            if (!text.toLowerCase().includes('security verification') && !text.toLowerCase().includes('just a moment')) {
+                break; // Cloudflare passed
+            }
+            sysLog('<span class="text-yellow-500 font-bold">> BYPASSING_CLOUDFLARE_NODE ['+(c+1)+'/15]...</span>');
+            try {
+                // Find and click the turnstile challenge iframe
+                const cfIframe = await page.$('iframe');
+                if(cfIframe) {
+                    const box = await cfIframe.boundingBox();
+                    if(box) {
+                        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {steps: 5});
+                        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                        sysLog('<span class="text-yellow-500 font-bold">> CLOUDFLARE_WIDGET_CLICKED.</span>');
+                    }
+                }
+            } catch(e) {}
+            await new Promise(r => setTimeout(r, 3000));
+        }
 
         let safetyCounter = 0;
         let uidInjected = false;
