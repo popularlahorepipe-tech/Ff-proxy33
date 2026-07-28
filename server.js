@@ -152,8 +152,8 @@ app.use((req, res, next) => {
     next();
 });
 
-process.on('uncaughtException', (err) => console.log(`[Shield] Uncaught Exception: ${err.message}`));
-process.on('unhandledRejection', (reason, promise) => console.log(`[Shield] Unhandled Rejection Prevented.`));
+process.on('uncaughtException', (err) => console.log(`[System] Uncaught Exception: ${err.message}`));
+process.on('unhandledRejection', (reason, promise) => console.log(`[System] Unhandled Rejection Prevented.`));
 
 setTimeout(async () => {
     try {
@@ -262,17 +262,17 @@ async function sendTgRequest(method, payload, fileData = null) {
             lastErr = e.code === 'ECONNRESET' ? 'Connection Reset' : (e.response ? `HTTP ${e.response.status}` : e.message);
         }
     }
-    appendLog(`<span class="text-red-500 font-bold">> TG_COMMS_FAILED: ${lastErr}</span>`);
+    appendLog(`<span style="color: #ef4444; font-weight: 500;">Connection Failed: ${lastErr}</span>`);
     return false;
 }
 
 async function sendTelegramScreenshot(base64Image, uid, name, isError = false, overrideCaption = null) {
     if(!base64Image) return;
     const buffer = Buffer.from(base64Image, 'base64');
-    let caption = overrideCaption || (isError ? `❌ Activation Error/Block!\n\n👤 Name: ${name}\n🆔 UID: ${uid}\n⏱️ Time (PKT): ${getPKTTime()}` : `✅ Target Activated!\n\n👤 Name: ${name}\n🆔 UID: ${uid}\n⏱️ Time (PKT): ${getPKTTime()}`);
+    let caption = overrideCaption || (isError ? `❌ Action Failed\n\n👤 Name: ${name}\n🆔 UID: ${uid}\n⏱️ Time (PKT): ${getPKTTime()}` : `✅ Success\n\n👤 Name: ${name}\n🆔 UID: ${uid}\n⏱️ Time (PKT): ${getPKTTime()}`);
     
     const res = await sendTgRequest("sendPhoto", { chat_id: TG_CHAT_ID, caption }, { fieldName: 'photo', buffer, filename: 'ss.jpg' });
-    if(res) appendLog(`<span class="${isError ? 'text-red-500' : 'text-green-500'}">> IMAGE_DELIVERED.</span>`);
+    if(res) appendLog(`<span style="color: ${isError ? '#ef4444' : '#10b981'};">Screenshot synced.</span>`);
     return res;
 }
 
@@ -304,9 +304,9 @@ setInterval(async () => {
                 let m = Math.floor(remainingMs / 60000);
                 let s = Math.floor((remainingMs % 60000) / 1000);
                 
-                let isExecuting = engineStatus[uid] ? `🚀 *Status:* Executing Engine...` : `✨ *Status:* Waiting Next Cycle`;
+                let isExecuting = engineStatus[uid] ? `🟢 *Status:* Active` : `⏳ *Status:* Standby`;
 
-                let text = `${liveClock} *ROMEO LIVE TRACKER* ${liveClock}\n\n👤 *Target:* ${t.name}\n🆔 *UID:* \`${uid}\`\n\n⏳ *Remaining Time:* ${m}m ${s}s\n📊 *Progress:* ${bar} ${percent.toFixed(1)}%\n\n${isExecuting}`;
+                let text = `${liveClock} *NODE TRACKER* ${liveClock}\n\n👤 *Target:* ${t.name}\n🆔 *UID:* \`${uid}\`\n\n⏱️ *Time Left:* ${m}m ${s}s\n📊 *Progress:* ${bar} ${percent.toFixed(1)}%\n\n${isExecuting}`;
 
                 await sendTgRequest("editMessageText", {
                     chat_id: TG_CHAT_ID,
@@ -456,7 +456,7 @@ app.post('/ch_uid', strictSecureMiddleware, async (req, res) => {
         const idx = updatedUids.indexOf(old_uid);
         if (idx > -1) updatedUids[idx] = new_uid;
         else if (updatedUids.length < license.allowed_uids) updatedUids.push(new_uid);
-        else return res.json({ success: false, msg: "Super User limit reached" });
+        else return res.json({ success: false, msg: "Limit reached" });
 
         await supabase.from('licenses').update({ uids: updatedUids }).eq('license_key', license_key);
         
@@ -476,19 +476,19 @@ app.post('/api/uid_status', strictSecureMiddleware, async (req, res) => {
                 const diff = t.expires_at - Date.now();
                 return res.json({ 
                     active: true, plan: "Premium", time_left: diff, 
-                    msg: "Premium Plan Active. System will auto-renew before expiry."
+                    msg: "Plan Active. Auto-renewal enabled."
                 });
             } else if(t.isFree) {
                 const timeLeft = t.freeExpiry - Date.now();
-                if(timeLeft <= 0) return res.json({ active: false, msg: "Free limit reached." });
+                if(timeLeft <= 0) return res.json({ active: false, msg: "Limit reached." });
                 return res.json({ 
-                    active: true, plan: "Free User", time_left: timeLeft, 
-                    msg: `Free User: 3 Ghante ke liye activate hui hai, automatic ${Math.floor(timeLeft/60000)} mins tak khud active rakhega.` 
+                    active: true, plan: "Free", time_left: timeLeft, 
+                    msg: `Session active for ${Math.floor(timeLeft/60000)} mins.` 
                 });
             } else {
                 return res.json({ 
-                    active: true, plan: "VIP Node", time_left: 999999999, 
-                    msg: "Dashboard Node: Hamesha activate rahega. Jab time khatam hone wala hoga, us se pehle hi khud-ba-khud renew ho jayega." 
+                    active: true, plan: "Admin Node", time_left: 999999999, 
+                    msg: "Continuous session enabled." 
                 });
             }
         }
@@ -500,29 +500,29 @@ app.post('/api/uid_status', strictSecureMiddleware, async (req, res) => {
     app.post(path, strictSecureMiddleware, async (req, res) => {
         try {
             const { uid, cookies_valid } = req.body;
-            if(!cookies_valid) return res.json({ success: false, msg: "Cookies/Headers verification failed." });
+            if(!cookies_valid) return res.json({ success: false, msg: "Verification failed." });
             
             if (path === '/step1') {
                 const { data: freeUser } = await supabase.from('free_users_track').select('*').eq('uid', uid).single();
                 if (freeUser) {
-                    if (freeUser.activation_count >= 2) return res.json({ success: false, msg: "Free quota reached. Purchase Premium." });
+                    if (freeUser.activation_count >= 2) return res.json({ success: false, msg: "Quota reached." });
                     await supabase.from('free_users_track').update({ activation_count: freeUser.activation_count + 1, last_activated: new Date().toISOString() }).eq('uid', uid);
                 } else {
                     await supabase.from('free_users_track').insert([{ uid, activation_count: 1, last_activated: new Date().toISOString() }]);
                 }
 
                 if (currentRunningUid === uid || engineStatus[uid]) {
-                    return res.json({ success: true, step: idx + 2, msg: "Engine already running for you." });
+                    return res.json({ success: true, step: idx + 2, msg: "Processing." });
                 }
 
                 if(!activeTimers[uid]) {
-                    startUIDCycle(uid, "Free Website User", 40, true, false, true);
+                    startUIDCycle(uid, "Free User", 40, true, false, true);
                 }
                 
                 if (currentRunningUid && currentRunningUid !== uid) {
                     if(!executionQueue.includes(uid)) executionQueue.push(uid);
                     const pos = executionQueue.indexOf(uid) + 1;
-                    return res.json({ success: false, waiting: true, msg: `System Busy! Target currently active. You are #${pos} in queue. Please wait.` });
+                    return res.json({ success: false, waiting: true, msg: `Queue position: #${pos}. Please wait.` });
                 }
                 
                 if(!executionQueue.includes(uid)) {
@@ -531,8 +531,8 @@ app.post('/api/uid_status', strictSecureMiddleware, async (req, res) => {
                 }
             }
 
-            return res.json({ success: true, step: idx + 2, msg: "Engine Sequence processing." });
-        } catch(e) { res.status(500).json({ error: "Step Processor Failed" }) }
+            return res.json({ success: true, step: idx + 2, msg: "Processing." });
+        } catch(e) { res.status(500).json({ error: "Processor Failed" }) }
     });
 });
 
@@ -556,7 +556,7 @@ function startPremiumCycle(user_id_or_key, uid, name, expires_at, isNewLicenseSy
 }
 
 // ==========================================
-// PURE CYBERPUNK / HACKER TERMINAL UI
+// MODERN CLEAN UI (SAAS DASHBOARD STYLE)
 // ==========================================
 const uiHead = `
     <meta charset="UTF-8">
@@ -564,133 +564,102 @@ const uiHead = `
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
         :root { 
-            --bg-color: #030303; 
-            --text-color: #00ff41; 
-            --glass-bg: rgba(0, 15, 0, 0.9); 
-            --panel-glow: rgba(0, 255, 65, 0.15); 
-            --input-bg: rgba(0, 255, 65, 0.05); 
-            --input-border: rgba(0, 255, 65, 0.4); 
-            --primary: #00ff41; 
-            --secondary: #008f11; 
-            --accent: #00ff41; 
+            --bg-color: #f8fafc; 
+            --surface: #ffffff; 
+            --text-main: #0f172a; 
+            --text-muted: #64748b; 
+            --border: #e2e8f0; 
+            --primary: #4f46e5; 
+            --primary-hover: #4338ca;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         }
-        body.light-mode { /* Alt Red Hacker Theme */
-            --bg-color: #050000; 
-            --text-color: #ff003c; 
-            --glass-bg: rgba(15, 0, 0, 0.9); 
-            --panel-glow: rgba(255, 0, 60, 0.15); 
-            --input-bg: rgba(255, 0, 60, 0.05); 
-            --input-border: rgba(255, 0, 60, 0.4); 
-            --primary: #ff003c;
-            --secondary: #8f0011;
-            --accent: #ff003c;
+        
+        body.dark-mode { 
+            --bg-color: #0f172a; 
+            --surface: #1e293b; 
+            --text-main: #f8fafc; 
+            --text-muted: #94a3b8; 
+            --border: #334155; 
+            --primary: #6366f1; 
+            --primary-hover: #818cf8;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
         }
+        
         body { 
             background-color: var(--bg-color);
-            background-image: linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
-            background-size: 30px 30px;
-            color: var(--text-color); 
-            font-family: 'Share Tech Mono', monospace; 
+            color: var(--text-main); 
+            font-family: 'Inter', sans-serif; 
             overflow-x: hidden; 
+            transition: background-color 0.3s ease, color 0.3s ease; 
+        }
+        
+        .card { 
+            background-color: var(--surface); 
+            border: 1px solid var(--border); 
+            border-radius: 16px; 
+            box-shadow: var(--shadow);
             transition: all 0.3s ease; 
         }
         
-        /* Scanline Overlay */
-        body::before {
-            content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            z-index: 999; background-size: 100% 2px, 3px 100%; pointer-events: none; opacity: 0.7;
-        }
-
-        .glass-panel { 
-            background: var(--glass-bg); 
-            border: 1px solid var(--input-border); 
-            box-shadow: 0 0 15px var(--panel-glow); 
-            border-radius: 2px; 
-            transition: all 0.3s ease; 
-            position: relative;
-        }
-        .glass-panel:hover {
-            box-shadow: 0 0 25px var(--primary); 
-            border-color: var(--primary);
-        }
-        
-        .text-gradient { 
-            color: var(--primary);
-            text-shadow: 0 0 8px var(--primary);
-        }
+        .text-primary { color: var(--primary); }
+        .bg-primary { background-color: var(--primary); }
         
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: var(--bg-color); }
-        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 0; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
         
         input, select { 
-            background: var(--input-bg); 
-            border: 1px solid var(--input-border); 
-            color: var(--text-color); 
+            background-color: var(--bg-color); 
+            border: 1px solid var(--border); 
+            color: var(--text-main); 
             transition: all 0.2s ease; 
-            border-radius: 2px; 
+            border-radius: 10px; 
+            padding: 0.875rem;
+            width: 100%;
         }
         input:focus, select:focus { 
             border-color: var(--primary); 
             outline: none; 
-            background: rgba(0, 255, 65, 0.1);
-            box-shadow: 0 0 10px var(--primary); 
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); 
         }
         
         .menu-open { transform: translateX(0) !important; opacity: 1 !important; pointer-events: auto !important; }
         
-        .btn-hover { 
-            background: transparent;
-            border: 1px solid var(--primary);
-            color: var(--primary);
+        .btn-primary { 
+            background-color: var(--primary);
+            color: white;
             transition: all 0.2s ease; 
-            border-radius: 2px; 
-            position: relative; 
-            overflow: hidden; 
-            z-index: 1; 
-            text-shadow: 0 0 5px var(--primary);
+            border-radius: 10px; 
+            font-weight: 600;
+            padding: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            cursor: pointer;
         }
-        .btn-hover::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: var(--primary); transition: left 0.3s; z-index: -1; }
-        .btn-hover:hover::before { left: 0; }
-        .btn-hover:hover { color: #000; box-shadow: 0 0 20px var(--primary); }
+        .btn-primary:hover { 
+            background-color: var(--primary-hover); 
+            transform: translateY(-1px);
+        }
         
         .progress-bar-container {
-            width: 100%; background-color: rgba(0,255,65,0.1); border: 1px solid var(--input-border); height: 8px; margin-top: 8px;
+            width: 100%; background-color: var(--border); border-radius: 999px; height: 6px; margin-top: 8px; overflow: hidden;
         }
         .progress-bar-fill {
-            height: 100%; background: var(--primary); transition: width 1s linear; box-shadow: 0 0 10px var(--primary);
+            height: 100%; background-color: var(--primary); transition: width 0.5s ease;
         }
         
         .modal-sheet {
-            background: var(--glass-bg);
-            border: 1px solid var(--primary);
-            border-radius: 2px;
-            box-shadow: 0 0 30px var(--primary);
-        }
-
-        /* Hacker Glitch Text */
-        .glitch-text {
-            position: relative;
-        }
-        .glitch-text::before, .glitch-text::after {
-            content: attr(data-text); position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.8;
-        }
-        .glitch-text::before { left: 2px; text-shadow: -2px 0 red; clip: rect(24px, 550px, 90px, 0); animation: glitch-anim 3s infinite linear alternate-reverse; }
-        .glitch-text::after { left: -2px; text-shadow: -2px 0 blue; clip: rect(85px, 550px, 140px, 0); animation: glitch-anim 2.5s infinite linear alternate-reverse; }
-        
-        @keyframes glitch-anim {
-            0% { clip: rect(10px, 9999px, 44px, 0); }
-            20% { clip: rect(65px, 9999px, 98px, 0); }
-            40% { clip: rect(23px, 9999px, 76px, 0); }
-            60% { clip: rect(87px, 9999px, 12px, 0); }
-            80% { clip: rect(45px, 9999px, 89px, 0); }
-            100% { clip: rect(32px, 9999px, 54px, 0); }
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
     </style>
     <script>
@@ -698,26 +667,26 @@ const uiHead = `
             gsap.registerPlugin(ScrollTrigger);
             
             gsap.from(".animate-box", { 
-                y: 20, opacity: 0, duration: 0.5, 
-                stagger: 0.1, ease: "power2.out", clearProps: "all" 
+                y: 15, opacity: 0, duration: 0.4, 
+                stagger: 0.05, ease: "power2.out", clearProps: "all" 
             });
             
-            if(localStorage.getItem('theme') === 'light') toggleTheme(true);
+            if(localStorage.getItem('theme') === 'dark') toggleTheme(true);
             const cachedAvatar = localStorage.getItem('avatar_cache');
             if(cachedAvatar && document.getElementById('admin-avatar')) document.getElementById('admin-avatar').src = cachedAvatar;
             loadAvatar();
         });
 
-        function toggleTheme(forceLight = false) {
-            const isLight = forceLight || !document.body.classList.contains('light-mode');
-            if(isLight) {
-                document.body.classList.add('light-mode');
-                document.getElementById('theme-icon')?.classList.replace('fa-code', 'fa-bug');
-                localStorage.setItem('theme', 'light');
-            } else {
-                document.body.classList.remove('light-mode');
-                document.getElementById('theme-icon')?.classList.replace('fa-bug', 'fa-code');
+        function toggleTheme(forceDark = false) {
+            const isDark = forceDark || !document.body.classList.contains('dark-mode');
+            if(isDark) {
+                document.body.classList.add('dark-mode');
+                document.getElementById('theme-icon')?.classList.replace('fa-moon', 'fa-sun');
                 localStorage.setItem('theme', 'dark');
+            } else {
+                document.body.classList.remove('dark-mode');
+                document.getElementById('theme-icon')?.classList.replace('fa-sun', 'fa-moon');
+                localStorage.setItem('theme', 'light');
             }
         }
 
@@ -735,7 +704,7 @@ const uiHead = `
         function showSysModal(opts) {
             const m = document.getElementById('sys-modal');
             const b = document.getElementById('sys-modal-box');
-            document.getElementById('sys-modal-title').innerText = opts.title || 'SYSTEM.NOTIFY';
+            document.getElementById('sys-modal-title').innerText = opts.title || 'Notification';
             document.getElementById('sys-modal-msg').innerHTML = opts.msg || '';
             
             const inp = document.getElementById('sys-modal-input');
@@ -746,86 +715,80 @@ const uiHead = `
             btnContainer.innerHTML = '';
             
             if(opts.type === 'confirm') {
-                btnContainer.innerHTML = \`<button class="px-6 py-2 border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition" onclick="closeSysModal(false)">[ ABORT ]</button>
-                                          <button class="px-6 py-2 border border-[var(--primary)] bg-[var(--primary)] text-black transition" onclick="closeSysModal(true)">[ EXECUTE ]</button>\`;
+                btnContainer.innerHTML = \`<button class="px-6 py-2.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-color)] transition font-medium" onclick="closeSysModal(false)">Cancel</button>
+                                          <button class="px-6 py-2.5 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition font-medium" onclick="closeSysModal(true)">Confirm</button>\`;
             } else if(opts.type === 'prompt') {
-                btnContainer.innerHTML = \`<button class="px-6 py-2 border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition" onclick="closeSysModal(null)">[ ABORT ]</button>
-                                          <button class="px-6 py-2 border border-[var(--primary)] bg-[var(--primary)] text-black transition" onclick="closeSysModal(document.getElementById('sys-modal-input').value)">[ SAVE ]</button>\`;
+                btnContainer.innerHTML = \`<button class="px-6 py-2.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-color)] transition font-medium" onclick="closeSysModal(null)">Cancel</button>
+                                          <button class="px-6 py-2.5 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition font-medium" onclick="closeSysModal(document.getElementById('sys-modal-input').value)">Save</button>\`;
             } else {
-                btnContainer.innerHTML = \`<button class="px-8 py-2 border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition w-full" onclick="closeSysModal('ok')">[ ACKNOWLEDGE ]</button>\`;
+                btnContainer.innerHTML = \`<button class="px-8 py-2.5 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition font-medium w-full" onclick="closeSysModal('ok')">Okay</button>\`;
             }
             
             window.sysModalCallback = opts.cb || function(){};
             m.classList.remove('hidden');
             gsap.fromTo(m, {opacity: 0}, {opacity: 1, duration: 0.2});
-            gsap.fromTo(b, {scale: 1.1, opacity: 0}, {scale: 1, opacity: 1, duration: 0.3});
+            gsap.fromTo(b, {scale: 0.95, opacity: 0}, {scale: 1, opacity: 1, duration: 0.2, ease: "power2.out"});
         }
         function closeSysModal(val) {
             const m = document.getElementById('sys-modal');
             const b = document.getElementById('sys-modal-box');
-            gsap.to(b, {scale: 0.9, opacity: 0, duration: 0.2});
-            gsap.to(m, {opacity: 0, duration: 0.2, onComplete: () => {
+            gsap.to(b, {scale: 0.95, opacity: 0, duration: 0.15});
+            gsap.to(m, {opacity: 0, duration: 0.15, onComplete: () => {
                 m.classList.add('hidden');
                 if(window.sysModalCallback) window.sysModalCallback(val);
             }});
         }
     </script>
     
-    <div id="sys-modal" class="fixed inset-0 bg-black/80 z-[300] hidden flex items-center justify-center">
+    <div id="sys-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-[300] hidden flex items-center justify-center">
         <div class="modal-sheet p-8 max-w-sm w-[90%] text-center" id="sys-modal-box">
-            <h3 id="sys-modal-title" class="text-xl font-bold mb-2 text-gradient uppercase">>_</h3>
-            <p id="sys-modal-msg" class="text-sm opacity-90 mb-6 leading-relaxed"></p>
-            <input type="text" id="sys-modal-input" class="hidden w-full p-3 mb-6 text-center border focus:border-[var(--primary)] transition bg-black text-[var(--primary)]" autocomplete="off" />
+            <h3 id="sys-modal-title" class="text-xl font-semibold mb-2 text-[var(--text-main)]"></h3>
+            <p id="sys-modal-msg" class="text-sm text-[var(--text-muted)] mb-6 leading-relaxed"></p>
+            <input type="text" id="sys-modal-input" class="hidden mb-6" autocomplete="off" />
             <div class="flex gap-3 justify-center" id="sys-modal-btns"></div>
         </div>
     </div>
 `;
 
-const getOrbs = () => ``; // Removed for pure terminal look
-
 const getFloatingHeader = (title, isAdmin) => `
-    <div class="fixed top-4 w-full flex justify-center z-[110] px-4 pointer-events-none">
-        <div class="flex justify-between items-center w-full max-w-5xl gap-3 md:gap-4 pointer-events-auto">
-            
-            <button ${isAdmin ? `onclick="document.getElementById('avatar-upload').click()"` : ''} class="w-12 h-12 md:w-14 md:h-14 flex-shrink-0 glass-panel flex items-center justify-center relative group">
-                <img id="admin-avatar" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" class="w-full h-full object-cover grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition">
-                ${isAdmin ? `<div class="absolute inset-0 bg-black/80 hidden group-hover:flex items-center justify-center transition-all"><i class="fa-solid fa-terminal text-[var(--primary)]"></i></div>` : ''}
+    <header class="fixed top-0 w-full z-[110] bg-[var(--surface)] border-b border-[var(--border)] shadow-sm px-4 md:px-8 py-3 flex justify-between items-center transition-colors duration-300">
+        <div class="flex items-center gap-4">
+            <button ${isAdmin ? `onclick="document.getElementById('avatar-upload').click()"` : ''} class="w-10 h-10 rounded-full overflow-hidden border border-[var(--border)] relative group">
+                <img id="admin-avatar" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" class="w-full h-full object-cover">
+                ${isAdmin ? `<div class="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center transition-all"><i class="fa-solid fa-camera text-white text-xs"></i></div>` : ''}
             </button>
             ${isAdmin ? `<input type="file" id="avatar-upload" class="hidden" accept="image/*" onchange="uploadAvatar(this)">` : ''}
-            
-            <div class="flex-1 max-w-md glass-panel h-12 md:h-14 flex items-center justify-center overflow-hidden px-6">
-                <span class="font-bold text-sm md:text-lg tracking-widest text-[var(--primary)] uppercase truncate glitch-text" data-text="[ ${title} ]">[ ${title} ]</span>
-            </div>
-
-            <button onclick="document.getElementById('overlay-menu').classList.toggle('menu-open')" class="w-12 h-12 md:w-14 md:h-14 flex-shrink-0 glass-panel flex items-center justify-center hover:bg-[var(--primary)] hover:text-black text-[var(--primary)] transition cursor-pointer z-50">
-                <i class="fa-solid fa-network-wired text-lg"></i>
-            </button>
-        </div>
-    </div>
-    
-    <div id="overlay-menu" class="fixed top-0 right-0 h-full w-[280px] bg-black border-l border-[var(--primary)] z-[100] transform translate-x-full opacity-0 pointer-events-none transition-all duration-300 flex flex-col p-6 shadow-[0_0_30px_var(--primary)]">
-        <div class="flex justify-between items-center mb-8 mt-20 border-b border-[var(--primary)] pb-2">
-            <h4 class="font-bold text-xs uppercase tracking-widest text-[var(--primary)]">SYSTEM.NAV</h4>
-            <button onclick="document.getElementById('overlay-menu').classList.remove('menu-open')" class="w-8 h-8 flex items-center justify-center text-sm text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black border border-transparent hover:border-[var(--primary)] transition">[X]</button>
+            <h1 class="font-semibold text-lg text-[var(--text-main)]">${title}</h1>
         </div>
         
-        <div class="flex flex-col gap-3 text-sm font-bold uppercase tracking-widest">
-            <a href="/" class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition"><i class="fa-solid fa-satellite-dish w-5 text-center"></i> Main Grid</a>
+        <button onclick="document.getElementById('overlay-menu').classList.toggle('menu-open')" class="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-color)] hover:text-[var(--text-main)] transition cursor-pointer">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
+    </header>
+    
+    <div id="overlay-menu" class="fixed top-0 right-0 h-full w-[280px] bg-[var(--surface)] border-l border-[var(--border)] z-[120] transform translate-x-full opacity-0 pointer-events-none transition-all duration-300 flex flex-col p-6 shadow-2xl">
+        <div class="flex justify-between items-center mb-8 pb-4 border-b border-[var(--border)]">
+            <h4 class="font-semibold text-sm text-[var(--text-muted)] uppercase tracking-wider">Navigation</h4>
+            <button onclick="document.getElementById('overlay-menu').classList.remove('menu-open')" class="w-8 h-8 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-color)] transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div class="flex flex-col gap-2 text-sm font-medium text-[var(--text-main)]">
+            <a href="/" class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition"><i class="fa-solid fa-chart-line w-5 text-center text-[var(--text-muted)]"></i> Overview</a>
             
             ${isAdmin ? `
-            <a href="/admin" class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition"><i class="fa-solid fa-terminal w-5 text-center"></i> Root Access</a>
-            <a href="/logs" class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition"><i class="fa-solid fa-file-code w-5 text-center"></i> System Dumps</a>
-            <a href="/server_settings" class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition"><i class="fa-solid fa-shield-virus w-5 text-center"></i> Firewall CLI</a>
-            <a href="/stats" class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition"><i class="fa-solid fa-microchip w-5 text-center"></i> Diagnostics</a>
+            <a href="/admin" class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition"><i class="fa-solid fa-layer-group w-5 text-center text-[var(--text-muted)]"></i> Manage Nodes</a>
+            <a href="/logs" class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition"><i class="fa-solid fa-file-lines w-5 text-center text-[var(--text-muted)]"></i> System Logs</a>
+            <a href="/server_settings" class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition"><i class="fa-solid fa-shield-halved w-5 text-center text-[var(--text-muted)]"></i> Security Settings</a>
+            <a href="/stats" class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition"><i class="fa-solid fa-server w-5 text-center text-[var(--text-muted)]"></i> Metrics</a>
             ` : `
-            <a href="/login" class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition"><i class="fa-solid fa-key w-5 text-center"></i> Auth Required</a>
+            <a href="/login" class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition"><i class="fa-solid fa-lock w-5 text-center text-[var(--text-muted)]"></i> Admin Login</a>
             `}
             
-            <div class="p-3 border border-transparent hover:border-[var(--primary)] hover:bg-[var(--input-bg)] flex items-center gap-4 transition cursor-pointer mt-4" onclick="toggleTheme()">
-                <i class="fa-solid fa-code w-5 text-center" id="theme-icon"></i> <span>Toggle Mode</span>
+            <div class="p-3 rounded-lg hover:bg-[var(--bg-color)] flex items-center gap-3 transition cursor-pointer mt-2" onclick="toggleTheme()">
+                <i class="fa-solid fa-moon w-5 text-center text-[var(--text-muted)]" id="theme-icon"></i> <span>Toggle Theme</span>
             </div>
             
-            ${isAdmin ? `<a href="/logout" class="p-3 border border-red-500/50 text-red-500 hover:bg-red-500 hover:text-black flex items-center gap-4 transition mt-4"><i class="fa-solid fa-power-off w-5 text-center"></i> Terminate Session</a>` : ''}
+            ${isAdmin ? `<a href="/logout" class="p-3 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-3 transition mt-4"><i class="fa-solid fa-arrow-right-from-bracket w-5 text-center"></i> Sign Out</a>` : ''}
         </div>
     </div>
     
@@ -892,29 +855,29 @@ app.get('/stats', (req, res) => {
     if (!req.session.isAdmin) return res.redirect('/login');
     res.send(`
         <!DOCTYPE html>
-        <html lang="en"><head><title>Diagnostics</title>${uiHead}</head>
-        <body class="min-h-screen pt-28 p-4 flex flex-col items-center">
-            ${getFloatingHeader('DIAGNOSTICS', true)}
-            <div class="w-full max-w-5xl mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 animate-box">
-                <div class="glass-panel p-6 flex flex-col border-l-4 border-l-[var(--primary)]">
-                    <h3 class="font-bold text-xs mb-2 opacity-70 uppercase tracking-widest">> CPU_CORE</h3>
-                    <p id="cpu-stat" class="font-bold text-sm animate-pulse text-[var(--primary)]">AWAITING_DATA...</p>
+        <html lang="en"><head><title>System Metrics</title>${uiHead}</head>
+        <body class="min-h-screen pt-24 pb-8 px-4 flex flex-col items-center">
+            ${getFloatingHeader('System Metrics', true)}
+            <div class="w-full max-w-5xl mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 animate-box">
+                <div class="card p-6 flex flex-col">
+                    <div class="flex items-center gap-3 mb-2 text-[var(--text-muted)]"><i class="fa-solid fa-microchip"></i> <h3 class="font-medium text-sm">Processor</h3></div>
+                    <p id="cpu-stat" class="font-semibold text-lg text-[var(--text-main)]">Loading...</p>
                 </div>
-                <div class="glass-panel p-6 flex flex-col border-l-4 border-l-[var(--primary)]">
-                    <h3 class="font-bold text-xs mb-2 opacity-70 uppercase tracking-widest">> RAM_ALLOC</h3>
-                    <p id="ram-stat" class="font-bold text-sm animate-pulse text-[var(--primary)]">AWAITING_DATA...</p>
+                <div class="card p-6 flex flex-col">
+                    <div class="flex items-center gap-3 mb-2 text-[var(--text-muted)]"><i class="fa-solid fa-memory"></i> <h3 class="font-medium text-sm">Memory Usage</h3></div>
+                    <p id="ram-stat" class="font-semibold text-lg text-[var(--text-main)]">Loading...</p>
                 </div>
-                <div class="glass-panel p-6 flex flex-col border-l-4 border-l-[var(--primary)]">
-                    <h3 class="font-bold text-xs mb-2 opacity-70 uppercase tracking-widest">> DISK_IO</h3>
-                    <p id="storage-stat" class="font-bold text-sm animate-pulse text-[var(--primary)]">AWAITING_DATA...</p>
+                <div class="card p-6 flex flex-col">
+                    <div class="flex items-center gap-3 mb-2 text-[var(--text-muted)]"><i class="fa-solid fa-hard-drive"></i> <h3 class="font-medium text-sm">Storage</h3></div>
+                    <p id="storage-stat" class="font-semibold text-lg text-[var(--text-main)]">Loading...</p>
                 </div>
-                <div class="glass-panel p-6 flex flex-col border-l-4 border-l-[var(--primary)]">
-                    <h3 class="font-bold text-xs mb-2 opacity-70 uppercase tracking-widest">> GPU_ENGINE</h3>
-                    <p id="gpu-stat" class="font-bold text-sm animate-pulse text-[var(--primary)]">AWAITING_DATA...</p>
+                <div class="card p-6 flex flex-col">
+                    <div class="flex items-center gap-3 mb-2 text-[var(--text-muted)]"><i class="fa-solid fa-display"></i> <h3 class="font-medium text-sm">Graphics</h3></div>
+                    <p id="gpu-stat" class="font-semibold text-lg text-[var(--text-main)]">Loading...</p>
                 </div>
-                <div class="glass-panel p-6 flex flex-col md:col-span-2 border-l-4 border-l-[var(--primary)]">
-                    <h3 class="font-bold text-xs mb-2 opacity-70 uppercase tracking-widest">> SYS_UPTIME</h3>
-                    <p id="uptime-stat" class="font-bold text-sm animate-pulse text-[var(--primary)]">AWAITING_DATA...</p>
+                <div class="card p-6 flex flex-col md:col-span-2">
+                    <div class="flex items-center gap-3 mb-2 text-[var(--text-muted)]"><i class="fa-solid fa-clock"></i> <h3 class="font-medium text-sm">System Uptime</h3></div>
+                    <p id="uptime-stat" class="font-semibold text-lg text-[var(--text-main)]">Loading...</p>
                 </div>
             </div>
             <script>
@@ -926,8 +889,6 @@ app.get('/stats', (req, res) => {
                     document.getElementById('storage-stat').innerText = data.storage;
                     document.getElementById('gpu-stat').innerText = data.gpu;
                     document.getElementById('uptime-stat').innerText = data.uptime;
-                    
-                    document.querySelectorAll('.animate-pulse').forEach(el => el.classList.remove('animate-pulse'));
                 }
                 loadStats();
                 setInterval(loadStats, 5000);
@@ -943,44 +904,42 @@ app.get('/', (req, res) => {
     const isAdmin = req.session.isAdmin;
     res.send(`
         <!DOCTYPE html>
-        <html lang="en"><head><title>Network Feed</title>${uiHead}</head>
-        <body class="min-h-screen pt-28 p-4 flex flex-col items-center">
-            ${getFloatingHeader('MAIN_GRID', isAdmin)}
+        <html lang="en"><head><title>Overview</title>${uiHead}</head>
+        <body class="min-h-screen pt-24 pb-8 px-4 flex flex-col items-center">
+            ${getFloatingHeader('Overview', isAdmin)}
             
-            <div class="w-full max-w-5xl glass-panel animate-box p-6 md:p-8 mt-4">
-                <div class="flex items-center mb-6 border-b border-[var(--input-border)] pb-4">
-                    <i class="fa-solid fa-server mr-3 text-xl text-[var(--primary)]"></i>
+            <div class="w-full max-w-5xl card animate-box p-6 md:p-8 mt-4">
+                <div class="flex items-center justify-between mb-6 border-b border-[var(--border)] pb-4">
                     <div>
-                        <h3 class="font-bold text-lg tracking-widest uppercase">Live Nodes</h3>
-                        <p class="text-xs opacity-60 uppercase tracking-widest mt-1">Real-time execution status</p>
+                        <h3 class="font-semibold text-lg text-[var(--text-main)]">Active Sessions</h3>
+                        <p class="text-sm text-[var(--text-muted)] mt-1">Real-time status of connected nodes.</p>
                     </div>
                 </div>
                 
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead><tr class="opacity-70 text-xs uppercase tracking-widest border-b border-[var(--input-border)]"><th class="pb-3 pl-2 font-bold">Node_ID</th><th class="pb-3 font-bold">Progress</th><th class="pb-3 text-center font-bold">Trace</th></tr></thead>
-                        <tbody id="status-body"><tr><td colspan="3" class="text-center py-12 opacity-50 text-sm font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i> CONNECTING TO CLUSTER...</td></tr></tbody>
+                        <thead><tr class="text-xs uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border)]"><th class="pb-3 pl-2 font-medium">Node Details</th><th class="pb-3 font-medium">Status & Progress</th><th class="pb-3 text-center font-medium">Preview</th></tr></thead>
+                        <tbody id="status-body"><tr><td colspan="3" class="text-center py-12 text-[var(--text-muted)] text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Connecting to server...</td></tr></tbody>
                     </table>
                 </div>
             </div>
 
             ${isAdmin ? `
-            <div id="preview-modal" class="fixed inset-0 bg-black z-[200] hidden flex flex-col items-center justify-center opacity-0 transition-opacity duration-300">
-                <div class="absolute top-0 left-0 w-full p-4 border-b border-[var(--primary)] flex justify-between items-center z-50 bg-black/80">
-                    <div class="flex items-center gap-3">
-                        <span class="text-xs font-bold tracking-widest text-red-500 animate-pulse">[ REC ]</span>
-                        <span class="text-sm font-bold tracking-wide">STREAM: <span id="modal-uid" class="text-[var(--primary)] ml-1"></span></span>
+            <div id="preview-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-[200] hidden flex flex-col items-center justify-center opacity-0 transition-opacity duration-300">
+                <div class="absolute top-0 w-full p-4 flex justify-between items-center z-50">
+                    <div class="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg text-white">
+                        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                        <span class="text-sm font-medium">Live Feed: <span id="modal-uid" class="ml-1 opacity-80"></span></span>
                     </div>
-                    <button onclick="closePreview()" class="px-4 py-1 border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition text-xs font-bold">
-                        [ DISCONNECT ]
+                    <button onclick="closePreview()" class="w-10 h-10 rounded-lg bg-white/10 text-white hover:bg-white/20 transition flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
-                <div class="relative w-full max-w-[360px] h-[640px] max-h-[85vh] overflow-hidden border-2 border-[var(--primary)] shadow-[0_0_30px_var(--primary)] bg-[#050505] flex items-center justify-center mt-12">
-                    <div class="absolute inset-0 bg-[linear-gradient(rgba(0,255,65,0.1)_1px,transparent_1px)] bg-[size:100%_4px] pointer-events-none z-10"></div>
-                    <img id="live-screen" src="" class="absolute inset-0 w-full h-full object-cover hidden transition-opacity duration-300 filter contrast-125" />
-                    <div id="no-signal" class="opacity-50 flex flex-col items-center z-10 text-[var(--primary)]">
-                        <i class="fa-solid fa-satellite-dish text-4xl mb-4 glitch-text" data-text="NO SIGNAL"></i>
-                        <span class="tracking-widest text-xs font-bold uppercase">Awaiting Feed...</span>
+                <div class="relative w-full max-w-[360px] h-[640px] max-h-[80vh] bg-black rounded-xl overflow-hidden shadow-2xl flex items-center justify-center mt-12 border border-white/10">
+                    <img id="live-screen" src="" class="absolute inset-0 w-full h-full object-cover hidden transition-opacity duration-300" />
+                    <div id="no-signal" class="text-white/50 flex flex-col items-center z-10">
+                        <i class="fa-solid fa-video-slash text-3xl mb-3"></i>
+                        <span class="text-sm font-medium">Waiting for video stream...</span>
                     </div>
                 </div>
             </div>` : ''}
@@ -994,31 +953,31 @@ app.get('/', (req, res) => {
                 socket.on('update_ui', function(data) {
                     const tbody = document.getElementById('status-body');
                     const keys = Object.keys(data);
-                    if(keys.length === 0) return tbody.innerHTML = '<tr><td colspan="3" class="text-center py-12 opacity-50 font-bold uppercase">> No active nodes found.</td></tr>';
+                    if(keys.length === 0) return tbody.innerHTML = '<tr><td colspan="3" class="text-center py-12 text-[var(--text-muted)] text-sm">No active sessions found.</td></tr>';
                     
                     let html = '';
                     for (let uid in data) {
                         let info = data[uid];
                         
-                        let previewBtn = '<button class="border border-[var(--input-border)] text-[var(--input-border)] px-3 py-1 text-xs opacity-50 cursor-not-allowed">[ LOCKED ]</button>';
+                        let previewBtn = '<button class="px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-muted)] text-xs opacity-50 cursor-not-allowed">Locked</button>';
                         
                         if (isAdmin) {
                             previewBtn = info.isRunning 
-                                ? \`<button onclick="openPreview('\${uid}')" class="border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition px-3 py-1 text-xs font-bold">[ VIEW ]</button>\`
-                                : \`<button class="border border-[var(--input-border)] text-[var(--input-border)] px-3 py-1 text-xs opacity-50 cursor-not-allowed">[ IDLE ]</button>\`;
+                                ? \`<button onclick="openPreview('\${uid}')" class="px-3 py-1.5 rounded-md bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition text-xs font-medium">View Screen</button>\`
+                                : \`<button class="px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--text-muted)] text-xs opacity-50 cursor-not-allowed">Offline</button>\`;
                         }
 
-                        let statusBadge = !info.autoActivate ? '<span class="text-red-500 text-[10px] ml-3 font-bold border border-red-500 px-1 uppercase tracking-wide">HALTED</span>' : '';
+                        let statusBadge = !info.autoActivate ? '<span class="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">Paused</span>' : '';
 
                         let barHtml = \`<div class="progress-bar-container"><div class="progress-bar-fill" style="width: \${info.percent}%;"></div></div>\`;
 
-                        html += '<tr class="border-b border-[var(--input-border)] hover:bg-[var(--input-bg)] transition-colors">' +
+                        html += '<tr class="border-b border-[var(--border)] hover:bg-[var(--bg-color)] transition-colors">' +
                             '<td class="py-4 pl-2">' + 
-                                '<div class="font-bold text-sm flex items-center uppercase">' + info.name + statusBadge + '</div>' + 
-                                '<div class="text-[10px] opacity-70 mt-1 font-mono tracking-widest">' + uid + '</div>' +
+                                '<div class="font-medium text-sm text-[var(--text-main)] flex items-center">' + info.name + statusBadge + '</div>' + 
+                                '<div class="text-xs text-[var(--text-muted)] mt-1 font-mono">' + uid + '</div>' +
                             '</td>' +
                             '<td class="py-4 pr-6">' + 
-                                '<div class="font-bold text-xs mb-1 uppercase">' + info.remaining + '</div>' + 
+                                '<div class="text-sm font-medium text-[var(--text-main)] mb-1.5">' + info.remaining + '</div>' + 
                                 barHtml + 
                             '</td>' +
                             '<td class="py-4 text-center">' + previewBtn + '</td>' +
@@ -1065,66 +1024,65 @@ app.get('/login', (req, res) => {
     if(req.session.isAdmin) return res.redirect('/admin');
     res.send(`
         <!DOCTYPE html>
-        <html lang="en"><head><title>ROOT_AUTH</title>${uiHead}</head>
+        <html lang="en"><head><title>Admin Login</title>${uiHead}</head>
         <body class="flex items-center justify-center min-h-screen relative">
-            <div id="auth-panel" class="modal-sheet p-8 w-[90%] max-w-sm text-center z-10 transition-all duration-300 border-l-4 border-l-[var(--primary)]">
-                <div class="mb-4">
-                    <i class="fa-solid fa-terminal text-4xl text-[var(--primary)] glitch-text" data-text="Terminal"></i>
+            <div id="auth-panel" class="modal-sheet p-8 w-[90%] max-w-sm text-center z-10 transition-all duration-300">
+                <div class="mb-6 inline-flex w-16 h-16 rounded-2xl bg-[var(--primary)] text-white items-center justify-center shadow-lg">
+                    <i class="fa-solid fa-shield-halved text-2xl"></i>
                 </div>
-                <h2 class="text-lg font-bold mb-6 tracking-widest uppercase text-[var(--primary)]">>_ ROOT_ACCESS</h2>
+                <h2 class="text-xl font-semibold mb-6 text-[var(--text-main)]">Admin Access</h2>
                 <form action="/login" method="POST" class="flex flex-col gap-4">
-                    <input type="password" name="password" placeholder="Passphrase" required class="w-full p-3 text-center tracking-widest bg-black border-[var(--input-border)] text-[var(--primary)] focus:border-[var(--primary)] font-bold"/>
-                    <button type="submit" class="btn-hover w-full p-3 uppercase tracking-widest text-sm mt-2 font-bold">[ INITIATE ]</button>
+                    <input type="password" name="password" placeholder="Enter Master Password" required />
+                    <button type="submit" class="btn-primary mt-2">Sign In</button>
                 </form>
-                <div class="mt-6 text-[10px] font-bold opacity-60 cursor-pointer hover:opacity-100 transition uppercase tracking-widest" onclick="showForgot()">> OVERRIDE_KEY</div>
+                <div class="mt-6 text-xs font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--primary)] transition" onclick="showForgot()">Recover Access</div>
             </div>
 
-            <div id="forgot-panel" class="modal-sheet p-8 w-[90%] max-w-sm text-center z-10 hidden absolute transition-all duration-300 border-l-4 border-l-red-500" style="border-color: red !important; box-shadow: 0 0 30px rgba(255,0,0,0.3);">
-                <div class="mb-4">
-                    <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500"></i>
+            <div id="forgot-panel" class="modal-sheet p-8 w-[90%] max-w-sm text-center z-10 hidden absolute transition-all duration-300">
+                <div class="mb-6 inline-flex w-16 h-16 rounded-2xl bg-orange-100 text-orange-500 dark:bg-orange-900/30 dark:text-orange-400 items-center justify-center">
+                    <i class="fa-solid fa-key text-2xl"></i>
                 </div>
-                <h2 class="text-md font-bold mb-2 tracking-widest uppercase text-red-500">> EMERGENCY_RECOVERY</h2>
-                <p class="text-[10px] opacity-70 mb-6 font-bold uppercase">OTP routed to Master Comms.</p>
+                <h2 class="text-xl font-semibold mb-2 text-[var(--text-main)]">Account Recovery</h2>
+                <p class="text-xs text-[var(--text-muted)] mb-6">A verification code will be sent to the master telegram channel.</p>
                 
-                <button onclick="sendOTP()" id="otp-btn" class="w-full p-3 mb-4 font-bold uppercase tracking-widest text-xs border border-red-500 text-red-500 hover:bg-red-500 hover:text-black transition">[ REQUEST_OTP ]</button>
+                <button onclick="sendOTP()" id="otp-btn" class="btn-primary w-full bg-orange-500 hover:bg-orange-600 shadow-none mb-4">Request Code</button>
                 <form id="reset-form" class="hidden flex flex-col gap-4" onsubmit="event.preventDefault(); resetPass();">
-                    <input type="text" id="otp-code" placeholder="ENTER_OTP" required class="w-full p-3 text-center tracking-widest bg-black border-red-500/50 text-red-500 focus:border-red-500 font-bold"/>
-                    <input type="password" id="new-pass" placeholder="NEW_PASSPHRASE" required class="w-full p-3 text-center tracking-widest bg-black border-red-500/50 text-red-500 focus:border-red-500 font-bold"/>
-                    <button type="submit" class="w-full p-3 uppercase tracking-widest text-xs mt-2 font-bold border border-red-500 bg-red-500 text-black hover:bg-transparent hover:text-red-500 transition">[ UPDATE_KEY ]</button>
+                    <input type="text" id="otp-code" placeholder="Enter OTP Code" required class="text-center font-mono tracking-widest"/>
+                    <input type="password" id="new-pass" placeholder="Enter New Password" required />
+                    <button type="submit" class="btn-primary mt-2 bg-orange-500 hover:bg-orange-600">Update Password</button>
                 </form>
-                <div class="mt-6 text-[10px] font-bold opacity-60 cursor-pointer hover:text-red-500 hover:opacity-100 transition uppercase tracking-widest" onclick="hideForgot()">[ ABORT ]</div>
+                <div class="mt-6 text-xs font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-main)] transition" onclick="hideForgot()">Back to Login</div>
             </div>
             
             <script>
                 if(localStorage.getItem('authErr')) {
-                    showSysModal({title: "ACCESS_DENIED", msg: "Invalid passphrase. Incident logged.", type: "alert"});
+                    showSysModal({title: "Access Denied", msg: "Incorrect password provided. Please try again.", type: "alert"});
                     localStorage.removeItem('authErr');
                 }
                 function showForgot() { 
                     const auth = document.getElementById('auth-panel');
                     const forg = document.getElementById('forgot-panel');
-                    gsap.to(auth, {scale: 0.9, opacity: 0, duration: 0.2, onComplete: () => {
+                    gsap.to(auth, {y: -10, opacity: 0, duration: 0.2, onComplete: () => {
                         auth.classList.add('hidden');
                         forg.classList.remove('hidden');
-                        gsap.fromTo(forg, {scale: 1.1, opacity: 0}, {scale: 1, opacity: 1, duration: 0.2});
+                        gsap.fromTo(forg, {y: 10, opacity: 0}, {y: 0, opacity: 1, duration: 0.2});
                     }});
                 }
                 function hideForgot() { 
                     const auth = document.getElementById('auth-panel');
                     const forg = document.getElementById('forgot-panel');
-                    gsap.to(forg, {scale: 0.9, opacity: 0, duration: 0.2, onComplete: () => {
+                    gsap.to(forg, {y: 10, opacity: 0, duration: 0.2, onComplete: () => {
                         forg.classList.add('hidden');
                         auth.classList.remove('hidden');
-                        gsap.fromTo(auth, {scale: 1.1, opacity: 0}, {scale: 1, opacity: 1, duration: 0.2});
+                        gsap.fromTo(auth, {y: -10, opacity: 0}, {y: 0, opacity: 1, duration: 0.2});
                     }});
                 }
                 
                 async function sendOTP() {
-                    document.getElementById('otp-btn').innerText = "[ TRANSMITTING... ]";
+                    document.getElementById('otp-btn').innerText = "Sending...";
                     await fetch('/api/auth/forgot', {method: 'POST'});
                     document.getElementById('otp-btn').classList.add('hidden');
                     document.getElementById('reset-form').classList.remove('hidden');
-                    gsap.fromTo("#reset-form", {opacity: 0, y: 10}, {opacity: 1, y: 0, duration: 0.2});
                 }
                 
                 async function resetPass() {
@@ -1133,9 +1091,9 @@ app.get('/login', (req, res) => {
                     const res = await fetch('/api/auth/reset', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({otp, pass})});
                     const data = await res.json();
                     if(data.success) { 
-                        showSysModal({title:"SYS_UPDATED", msg:"Key updated successfully.", cb: () => window.location.reload() });
+                        showSysModal({title:"Success", msg:"Password updated successfully.", cb: () => window.location.reload() });
                     } else { 
-                        showSysModal({title:"ERROR", msg:"Invalid Verification OTP."}); 
+                        showSysModal({title:"Error", msg:"Invalid OTP code entered."}); 
                     }
                 }
             </script>
@@ -1152,7 +1110,7 @@ app.get('/logout', (req, res) => { req.session = null; res.redirect('/'); });
 
 app.post('/api/auth/forgot', async (req, res) => {
     resetOTP = Math.floor(1000 + Math.random() * 9000).toString();
-    await sendTgRequest("sendMessage", { chat_id: TG_CHAT_ID, text: `🔐 *ROMEO ADMIN SECURITY*\n\nYour Password Reset OTP is: \`${resetOTP}\``, parse_mode: "Markdown" });
+    await sendTgRequest("sendMessage", { chat_id: TG_CHAT_ID, text: `🔐 *Admin Access Recovery*\n\nYour OTP is: \`${resetOTP}\``, parse_mode: "Markdown" });
     res.json({success: true});
 });
 
@@ -1174,21 +1132,21 @@ app.get('/admin', async (req, res) => {
     let usersHtml = '';
     if (users && users.length > 0) {
         users.forEach(u => {
-            let activeColor = u.auto_activate ? 'text-[var(--primary)] border-[var(--primary)]' : 'text-gray-500 border-gray-600 opacity-60';
+            let activeColor = u.auto_activate ? 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400' : 'text-[var(--text-muted)] bg-[var(--bg-color)]';
             
-            usersHtml += `<div class="bg-[var(--input-bg)] border border-[var(--input-border)] p-4 flex flex-col md:flex-row justify-between items-center gap-3 mb-2 hover:border-[var(--primary)] transition group">
+            usersHtml += `<div class="p-4 rounded-xl border border-[var(--border)] flex flex-col md:flex-row justify-between items-center gap-3 mb-3 bg-[var(--bg-color)]">
                 <div class="text-center md:text-left w-full md:w-auto">
-                    <b class="text-sm font-bold uppercase text-white flex items-center justify-center md:justify-start">> ${u.name}</b>
+                    <b class="text-sm font-medium text-[var(--text-main)]">${u.name}</b>
                     <div class="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-2">
-                        <span class="text-[10px] font-bold opacity-80 bg-black px-2 py-1 border border-[var(--input-border)]">[ ${u.uid} ]</span>
-                        <span class="text-[10px] font-bold text-[var(--primary)] bg-black border border-[var(--primary)] px-2 py-1 cursor-pointer hover:bg-[var(--primary)] hover:text-black transition" onclick="editTime('${u.uid}', ${u.interval_mins})">
-                            <i class="fa-solid fa-clock mr-1"></i> ${u.interval_mins}m 
+                        <span class="text-xs text-[var(--text-muted)] font-mono">${u.uid}</span>
+                        <span class="text-[10px] font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 cursor-pointer hover:opacity-80" onclick="editTime('${u.uid}', ${u.interval_mins})">
+                            <i class="fa-regular fa-clock mr-1"></i> ${u.interval_mins}m 
                         </span>
                     </div>
                 </div>
                 <div class="flex gap-2 w-full md:w-auto justify-center md:justify-end">
-                    <button class="border ${activeColor} px-3 py-1.5 transition font-bold text-[10px] flex items-center hover:bg-[var(--primary)] hover:text-black uppercase" onclick="toggleAuto('${u.uid}', ${!u.auto_activate})">[ AUTO ]</button>
-                    <button class="border border-red-500 text-red-500 hover:bg-red-500 hover:text-black px-3 py-1.5 transition text-[10px] font-bold" onclick="delUser('${u.id}', '${u.uid}')">[ DEL ]</button>
+                    <button class="px-3 py-1.5 rounded-lg text-xs font-medium transition ${activeColor}" onclick="toggleAuto('${u.uid}', ${!u.auto_activate})">${u.auto_activate ? 'Active' : 'Paused'}</button>
+                    <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition" onclick="delUser('${u.id}', '${u.uid}')"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>`;
         });
@@ -1198,14 +1156,14 @@ app.get('/admin', async (req, res) => {
     if (licenses && licenses.length > 0) {
         licenses.forEach(l => {
             const timeDiff = new Date(l.expires_at).getTime() - Date.now();
-            const daysLeft = timeDiff > 0 ? (timeDiff / (1000 * 60 * 60 * 24)).toFixed(1) + 'd' : '<span class="text-red-500 font-bold">EXPIRED</span>';
-            const bindInfo = l.ip_address ? `<span class="opacity-90 font-bold text-[10px] text-[var(--primary)]" title="${l.device_fingerprint}">${l.ip_address}</span>` : '<span class="opacity-50 text-[10px]">UNBOUND</span>';
-            licensesHtml += `<div class="bg-[var(--input-bg)] border border-[var(--input-border)] p-4 flex flex-col gap-2 mb-2 hover:border-[var(--primary)] transition group">
-                <div class="flex justify-between items-center"><b class="text-xs tracking-widest text-white">> ${l.license_key}</b> <span class="uppercase text-[9px] font-bold border border-[var(--primary)] text-[var(--primary)] px-1.5 py-0.5">${l.plan_type}</span></div>
-                <div class="flex justify-between text-[10px] font-bold opacity-80 mt-1"><span>TTL: ${daysLeft}</span> <span>IP: ${bindInfo}</span></div>
-                <div class="flex gap-2 mt-2 justify-end border-t border-[var(--input-border)] pt-2">
-                    <button onclick="flushDevice('${l.license_key}')" class="border border-yellow-500 text-yellow-500 px-2 py-1 text-[9px] hover:bg-yellow-500 hover:text-black transition font-bold">[ FLUSH ]</button>
-                    <button onclick="delLicense('${l.license_key}')" class="border border-red-500 text-red-500 px-2 py-1 text-[9px] hover:bg-red-500 hover:text-black transition font-bold">[ PURGE ]</button>
+            const daysLeft = timeDiff > 0 ? (timeDiff / (1000 * 60 * 60 * 24)).toFixed(1) + 'd' : '<span class="text-red-500 font-medium">Expired</span>';
+            const bindInfo = l.ip_address ? `<span class="text-[var(--text-main)]" title="${l.device_fingerprint}">${l.ip_address}</span>` : '<span class="text-[var(--text-muted)]">Unbound</span>';
+            licensesHtml += `<div class="p-4 rounded-xl border border-[var(--border)] flex flex-col gap-2 mb-3 bg-[var(--bg-color)]">
+                <div class="flex justify-between items-center"><b class="text-xs font-mono text-[var(--text-main)]">${l.license_key}</b> <span class="text-[10px] font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">${l.plan_type}</span></div>
+                <div class="flex justify-between text-xs text-[var(--text-muted)] mt-1"><span>Time left: ${daysLeft}</span> <span>IP: ${bindInfo}</span></div>
+                <div class="flex gap-2 mt-2 pt-3 border-t border-[var(--border)] justify-end">
+                    <button onclick="flushDevice('${l.license_key}')" class="px-2.5 py-1 text-xs font-medium text-orange-600 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 rounded transition">Reset Device</button>
+                    <button onclick="delLicense('${l.license_key}')" class="px-2.5 py-1 text-xs font-medium text-red-600 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 rounded transition">Delete</button>
                 </div>
             </div>`;
         });
@@ -1213,48 +1171,48 @@ app.get('/admin', async (req, res) => {
 
     res.send(`
         <!DOCTYPE html>
-        <html lang="en"><head><title>ROOT_ACCESS</title>${uiHead}</head>
-        <body class="min-h-screen pt-28 p-4 flex flex-col items-center">
-            ${getFloatingHeader('ROOT_CONTROL', true)}
+        <html lang="en"><head><title>Admin Panel</title>${uiHead}</head>
+        <body class="min-h-screen pt-24 pb-8 px-4 flex flex-col items-center">
+            ${getFloatingHeader('Control Center', true)}
             
             <div class="w-full max-w-7xl mt-4">
-                <div class="flex justify-start items-center mb-6 pl-2 animate-box">
-                    <button onclick="changeAdminPass()" class="border border-[var(--primary)] bg-black hover:bg-[var(--primary)] hover:text-black text-[var(--primary)] px-4 py-2 font-bold transition text-xs flex items-center shadow-[0_0_10px_var(--panel-glow)]">
-                        [ UPDATE_PASSPHRASE ]
+                <div class="flex justify-end mb-6 animate-box">
+                    <button onclick="changeAdminPass()" class="px-4 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-main)] text-sm font-medium hover:bg-[var(--bg-color)] transition shadow-sm">
+                        <i class="fa-solid fa-lock mr-2 text-[var(--text-muted)]"></i> Change Password
                     </button>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="flex flex-col gap-4">
-                        <div class="glass-panel animate-box p-6 border-l-4 border-l-[var(--primary)]">
-                            <h3 class="text-xs font-bold mb-4 uppercase tracking-widest text-white">> DEPLOY_NODE</h3>
-                            <input type="text" id="name" placeholder="ALIAS_NAME" class="w-full p-2.5 mb-2 text-center bg-black border border-[var(--input-border)] text-xs focus:border-[var(--primary)] font-bold uppercase" />
-                            <input type="text" id="uid" placeholder="TARGET_UID" class="w-full p-2.5 mb-2 text-center bg-black border border-[var(--input-border)] text-xs focus:border-[var(--primary)] font-bold uppercase" />
-                            <input type="number" id="interval" placeholder="INTERVAL (MINS)" class="w-full p-2.5 mb-4 text-center bg-black border border-[var(--input-border)] text-xs focus:border-[var(--primary)] font-bold" />
-                            <button onclick="addUser()" class="btn-hover w-full p-2.5 font-bold uppercase tracking-widest text-xs">[ INITIATE ]</button>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="flex flex-col gap-6">
+                        <div class="card animate-box p-6">
+                            <h3 class="text-sm font-semibold mb-4 text-[var(--text-main)]">Add New Node</h3>
+                            <input type="text" id="name" placeholder="Name or Alias" class="mb-3" />
+                            <input type="text" id="uid" placeholder="Target Identifier (UID)" class="mb-3 font-mono text-sm" />
+                            <input type="number" id="interval" placeholder="Check Interval (Minutes)" class="mb-4" />
+                            <button onclick="addUser()" class="btn-primary w-full">Deploy Node</button>
                         </div>
                         
-                        <div class="glass-panel animate-box p-6 border-l-4 border-l-yellow-500">
-                            <h3 class="text-xs font-bold mb-4 uppercase tracking-widest text-white">> GEN_LICENSE</h3>
-                            <select id="plan_type" class="w-full p-2.5 mb-2 text-center bg-black border border-yellow-500/50 text-yellow-500 text-xs focus:border-yellow-500 font-bold uppercase">
-                                <option value="trial" class="bg-black">Trial (1 Day)</option>
-                                <option value="weekly" class="bg-black">Weekly (7 Days)</option>
-                                <option value="monthly" class="bg-black">Monthly (30 Days)</option>
-                                <option value="superuser" class="bg-black text-[var(--primary)]">Super User (10 UIDs)</option>
+                        <div class="card animate-box p-6">
+                            <h3 class="text-sm font-semibold mb-4 text-[var(--text-main)]">Generate License Key</h3>
+                            <select id="plan_type" class="mb-3">
+                                <option value="trial">Trial Access (1 Day)</option>
+                                <option value="weekly">Weekly Pass (7 Days)</option>
+                                <option value="monthly">Monthly Subscription (30 Days)</option>
+                                <option value="superuser">Super User (10 UIDs)</option>
                             </select>
-                            <input type="number" step="0.1" id="plan_days" placeholder="CUSTOM_TTL (DAYS)" class="w-full p-2.5 mb-4 text-center bg-black border border-yellow-500/50 text-yellow-500 text-xs focus:border-yellow-500 font-bold" />
-                            <button onclick="genLicense()" class="w-full p-2.5 font-bold uppercase tracking-widest text-xs border border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black transition shadow-[0_0_10px_rgba(234,179,8,0.2)]">[ GENERATE_KEY ]</button>
+                            <input type="number" step="0.1" id="plan_days" placeholder="Custom Duration (Days)" class="mb-4" />
+                            <button onclick="genLicense()" class="btn-primary w-full bg-purple-600 hover:bg-purple-700">Create Key</button>
                         </div>
                     </div>
 
-                    <div class="glass-panel animate-box p-6 md:col-span-1 flex flex-col max-h-[750px] border-t-4 border-t-[var(--primary)]">
-                        <h3 class="text-xs font-bold mb-4 uppercase tracking-widest border-b border-[var(--input-border)] pb-2 text-white">> ACTIVE_NODES</h3>
-                        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">${usersHtml || '<div class="text-center py-12 opacity-50 font-bold text-xs uppercase">NO NODES DEPLOYED.</div>'}</div>
+                    <div class="card animate-box p-6 lg:col-span-1 flex flex-col max-h-[750px]">
+                        <h3 class="text-sm font-semibold mb-4 text-[var(--text-main)] border-b border-[var(--border)] pb-3">Deployed Nodes</h3>
+                        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">${usersHtml || '<div class="text-center py-12 text-[var(--text-muted)] text-sm">No nodes have been added yet.</div>'}</div>
                     </div>
 
-                    <div class="glass-panel animate-box p-6 md:col-span-1 flex flex-col max-h-[750px] border-t-4 border-t-[var(--primary)]">
-                        <h3 class="text-xs font-bold mb-4 uppercase tracking-widest border-b border-[var(--input-border)] pb-2 text-white">> LICENSE_REGISTRY</h3>
-                        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">${licensesHtml || '<div class="text-center py-12 opacity-50 font-bold text-xs uppercase">REGISTRY EMPTY.</div>'}</div>
+                    <div class="card animate-box p-6 lg:col-span-1 flex flex-col max-h-[750px]">
+                        <h3 class="text-sm font-semibold mb-4 text-[var(--text-main)] border-b border-[var(--border)] pb-3">License Registry</h3>
+                        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">${licensesHtml || '<div class="text-center py-12 text-[var(--text-muted)] text-sm">No licenses have been generated.</div>'}</div>
                     </div>
                 </div>
             </div>
@@ -1263,12 +1221,12 @@ app.get('/admin', async (req, res) => {
                     const name = document.getElementById('name').value;
                     const uid = document.getElementById('uid').value;
                     const interval = document.getElementById('interval').value || 40;
-                    if(!name || !uid) return showSysModal({msg: "PARAMETERS MISSING!"});
+                    if(!name || !uid) return showSysModal({msg: "Please fill in all required fields."});
                     await fetch('/api/target/add', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, uid, interval}) });
                     window.location.reload();
                 }
                 function delUser(id, uid) {
-                    showSysModal({title: "SYS.WARN", msg: "PURGE NODE DEFINITELY?", type: "confirm", cb: async (res) => {
+                    showSysModal({title: "Remove Node", msg: "Are you sure you want to delete this node?", type: "confirm", cb: async (res) => {
                         if(res) {
                             await fetch('/api/target/del', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id, uid}) });
                             window.location.reload();
@@ -1280,7 +1238,7 @@ app.get('/admin', async (req, res) => {
                     window.location.reload();
                 }
                 function editTime(uid, oldTime) {
-                    showSysModal({title: "UPDATE_CRON", msg: "ENTER NEW INTERVAL (MINS):", type: "prompt", default: oldTime, cb: async (newTime) => {
+                    showSysModal({title: "Update Schedule", msg: "Enter new interval time (minutes):", type: "prompt", default: oldTime, cb: async (newTime) => {
                         if(newTime && !isNaN(newTime) && newTime != oldTime) {
                             await fetch('/api/target/edit_time', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({uid, interval: parseInt(newTime)}) });
                             window.location.reload();
@@ -1288,11 +1246,11 @@ app.get('/admin', async (req, res) => {
                     }});
                 }
                 function changeAdminPass() {
-                    showSysModal({title: "SEC_UPDATE", msg: "ENTER NEW PASSPHRASE:", type: "prompt", cb: async (newPass) => {
+                    showSysModal({title: "Update Security", msg: "Enter new master password:", type: "prompt", cb: async (newPass) => {
                         if(newPass && newPass.length >= 6) {
                             await fetch('/api/auth/change_pass', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({newPass}) });
-                            showSysModal({title: "SUCCESS", msg: "KEY UPDATED."});
-                        } else if (newPass) showSysModal({title: "ERR", msg: "KEY TOO WEAK."});
+                            showSysModal({title: "Success", msg: "Password updated successfully."});
+                        } else if (newPass) showSysModal({title: "Error", msg: "Password must be at least 6 characters long."});
                     }});
                 }
                 
@@ -1307,7 +1265,7 @@ app.get('/admin', async (req, res) => {
                     window.location.reload();
                 }
                 async function delLicense(key) {
-                    showSysModal({title: "PURGE_KEY", msg: "DESTROY LICENSE FOREVER?", type: "confirm", cb: async (res) => {
+                    showSysModal({title: "Delete License", msg: "Are you sure you want to delete this license key?", type: "confirm", cb: async (res) => {
                         if(res) {
                             await fetch('/api/admin/purge_key', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key}) });
                             window.location.reload();
@@ -1369,38 +1327,38 @@ app.get('/server_settings', (req, res) => {
     if (!req.session.isAdmin) return res.redirect('/login');
     res.send(`
         <!DOCTYPE html>
-        <html lang="en"><head><title>Firewall_CLI</title>${uiHead}</head>
-        <body class="min-h-screen pt-28 p-4 flex flex-col items-center">
-            ${getFloatingHeader('FIREWALL_CLI', true)}
+        <html lang="en"><head><title>Security Settings</title>${uiHead}</head>
+        <body class="min-h-screen pt-24 pb-8 px-4 flex flex-col items-center">
+            ${getFloatingHeader('Security Settings', true)}
             
-            <div class="w-full max-w-7xl mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div class="glass-panel animate-box p-6 flex flex-col border-t-4 border-t-yellow-500">
-                    <h3 class="font-bold uppercase tracking-widest text-white text-xs mb-4 border-b border-[var(--input-border)] pb-2">> CORS_SECURITY</h3>
+            <div class="w-full max-w-7xl mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card animate-box p-6 flex flex-col">
+                    <h3 class="font-semibold text-[var(--text-main)] mb-4 border-b border-[var(--border)] pb-3">CORS Configuration</h3>
                     
-                    <div class="flex items-center justify-between bg-black border border-[var(--input-border)] p-4 mb-4">
+                    <div class="flex items-center justify-between bg-[var(--bg-color)] border border-[var(--border)] rounded-xl p-4 mb-5">
                         <div>
-                            <div class="font-bold text-xs tracking-widest text-white">ALLOW_ALL_ORIGINS (*)</div>
-                            <div class="text-[9px] opacity-70 font-bold mt-1 text-yellow-500 uppercase">Warning: Unrestricted Access</div>
+                            <div class="font-medium text-sm text-[var(--text-main)]">Allow Global Access (*)</div>
+                            <div class="text-xs text-[var(--text-muted)] mt-1">If disabled, only domains below are allowed.</div>
                         </div>
-                        <button id="cors-toggle" onclick="toggleCors()" class="px-3 py-1 border font-bold text-xs transition uppercase ${ALLOW_ALL_CORS ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-transparent text-gray-500 border-gray-600 hover:border-white'}">
-                            ${ALLOW_ALL_CORS ? '[ ACTIVE ]' : '[ BLOCKED ]'}
+                        <button id="cors-toggle" onclick="toggleCors()" class="px-4 py-2 rounded-lg text-xs font-medium transition ${ALLOW_ALL_CORS ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)]'}">
+                            ${ALLOW_ALL_CORS ? 'Enabled' : 'Disabled'}
                         </button>
                     </div>
 
-                    <div class="flex gap-2 mb-4">
-                        <input type="text" id="new-cors-url" placeholder="https://domain.com" class="flex-1 p-2 text-xs bg-black border border-[var(--input-border)] focus:border-[var(--primary)] font-bold uppercase" />
-                        <button onclick="addCorsUrl()" class="px-4 border border-[var(--primary)] hover:bg-[var(--primary)] hover:text-black font-bold text-xs transition uppercase">[ ADD ]</button>
+                    <div class="flex gap-3 mb-5">
+                        <input type="text" id="new-cors-url" placeholder="e.g. https://example.com" class="text-sm" />
+                        <button onclick="addCorsUrl()" class="btn-primary px-6 whitespace-nowrap">Add URL</button>
                     </div>
 
                     <div id="cors-list" class="flex-1 overflow-y-auto space-y-2 max-h-[300px] custom-scrollbar"></div>
                 </div>
 
-                <div class="glass-panel animate-box p-6 flex flex-col h-[65vh] border-t-4 border-t-[var(--primary)]">
-                    <div class="flex justify-between items-center border-b border-[var(--input-border)] pb-2 mb-4">
-                        <h3 class="font-bold uppercase tracking-widest text-white text-xs">> TRAFFIC_LOGS</h3>
-                        <button onclick="fetchApiLogs()" class="text-[10px] border border-[var(--primary)] hover:bg-[var(--primary)] hover:text-black px-2 py-1 transition font-bold uppercase">[ SYNC ]</button>
+                <div class="card animate-box p-6 flex flex-col h-[65vh]">
+                    <div class="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-4">
+                        <h3 class="font-semibold text-[var(--text-main)]">API Traffic Logs</h3>
+                        <button onclick="fetchApiLogs()" class="px-3 py-1.5 rounded-md border border-[var(--border)] hover:bg-[var(--bg-color)] text-[var(--text-muted)] text-xs font-medium transition">Refresh Data</button>
                     </div>
-                    <div id="api-logs-container" class="flex-1 overflow-y-auto space-y-2 custom-scrollbar"></div>
+                    <div id="api-logs-container" class="flex-1 overflow-y-auto space-y-3 custom-scrollbar"></div>
                 </div>
             </div>
 
@@ -1413,16 +1371,16 @@ app.get('/server_settings', (req, res) => {
                 
                 function renderCorsList(urls) {
                     const list = document.getElementById('cors-list');
-                    if(urls.length === 0) return list.innerHTML = '<div class="text-center opacity-50 py-4 text-xs font-bold uppercase">NO WHITELIST DOMAINS.</div>';
-                    list.innerHTML = urls.map(u => \`<div class="flex justify-between items-center bg-black p-3 border border-[var(--input-border)]">
-                        <span class="text-xs font-bold text-white">\${u}</span>
-                        <button onclick="removeCorsUrl('\${u}')" class="text-red-500 hover:bg-red-500 hover:text-black transition border border-red-500 px-2 text-xs font-bold">[ RM ]</button>
+                    if(urls.length === 0) return list.innerHTML = '<div class="text-center text-[var(--text-muted)] py-6 text-sm">No domains added to the whitelist.</div>';
+                    list.innerHTML = urls.map(u => \`<div class="flex justify-between items-center bg-[var(--bg-color)] rounded-lg p-3 border border-[var(--border)]">
+                        <span class="text-sm text-[var(--text-main)]">\${u}</span>
+                        <button onclick="removeCorsUrl('\${u}')" class="text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 p-2 rounded-md transition"><i class="fa-solid fa-trash-can text-sm"></i></button>
                     </div>\`).join('');
                 }
 
                 async function toggleCors() {
                     const btn = document.getElementById('cors-toggle');
-                    const isCurrentlyOn = btn.innerText.includes('ACTIVE');
+                    const isCurrentlyOn = btn.innerText.includes('Enabled');
                     const res = await fetch('/api/system/cors_toggle', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status: !isCurrentlyOn}) });
                     const data = await res.json();
                     if(data.success) window.location.reload();
@@ -1445,18 +1403,21 @@ app.get('/server_settings', (req, res) => {
                     const res = await fetch('/api/system/api_logs_fetch');
                     const data = await res.json();
                     const container = document.getElementById('api-logs-container');
-                    if(data.logs.length === 0) return container.innerHTML = '<div class="text-center opacity-50 py-10 text-xs font-bold uppercase">NO TRAFFIC DETECTED.</div>';
+                    if(data.logs.length === 0) return container.innerHTML = '<div class="text-center text-[var(--text-muted)] py-10 text-sm">No recent API traffic found.</div>';
                     
                     container.innerHTML = data.logs.map(log => {
-                        const statusColor = log.status >= 400 ? 'text-red-500 border-red-500/50' : 'text-[var(--primary)] border-[var(--input-border)]';
-                        return \`<div class="bg-black p-3 border \${statusColor}">
-                            <div class="flex justify-between mb-2 border-b border-gray-800 pb-2">
-                                <span class="font-bold text-xs uppercase text-white">\${log.method} <span class="opacity-60 lowercase ml-2 font-normal text-[10px]">\${log.url}</span></span>
-                                <span class="text-[10px] font-bold">\${log.timeTaken} | <span class="\${log.status >= 400 ? 'text-red-500' : 'text-[var(--primary)]'}">\${log.status}</span></span>
+                        const statusClass = log.status >= 400 ? 'text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400' : 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400';
+                        return \`<div class="bg-[var(--bg-color)] rounded-xl p-4 border border-[var(--border)]">
+                            <div class="flex justify-between items-center mb-3 border-b border-[var(--border)] pb-3">
+                                <span class="font-medium text-sm text-[var(--text-main)]">\${log.method} <span class="text-[var(--text-muted)] font-normal text-xs ml-2">\${log.url}</span></span>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs text-[var(--text-muted)]">\${log.timeTaken}</span>
+                                    <span class="px-2 py-0.5 rounded text-xs font-medium \${statusClass}">\${log.status}</span>
+                                </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-2 mt-2">
-                                <div class="bg-[#050505] p-2 border border-gray-800"><div class="text-[8px] opacity-70 mb-1 uppercase font-bold">> PAYLOAD_IN</div><pre class="text-[9px] opacity-80 overflow-x-auto">\${JSON.stringify(log.reqBody, null, 2)}</pre></div>
-                                <div class="bg-[#050505] p-2 border border-gray-800"><div class="text-[8px] opacity-70 mb-1 uppercase font-bold">> PAYLOAD_OUT</div><pre class="text-[9px] opacity-80 overflow-x-auto">\${JSON.stringify(log.resBody, null, 2)}</pre></div>
+                            <div class="grid grid-cols-2 gap-3 mt-2">
+                                <div class="bg-[var(--surface)] p-3 rounded-lg border border-[var(--border)]"><div class="text-[10px] text-[var(--text-muted)] mb-1.5 uppercase tracking-wider font-semibold">Request Body</div><pre class="text-[10px] text-[var(--text-main)] overflow-x-auto font-mono">\${JSON.stringify(log.reqBody, null, 2)}</pre></div>
+                                <div class="bg-[var(--surface)] p-3 rounded-lg border border-[var(--border)]"><div class="text-[10px] text-[var(--text-muted)] mb-1.5 uppercase tracking-wider font-semibold">Response</div><pre class="text-[10px] text-[var(--text-main)] overflow-x-auto font-mono">\${JSON.stringify(log.resBody, null, 2)}</pre></div>
                             </div>
                         </div>\`;
                     }).join('');
@@ -1503,38 +1464,38 @@ app.get('/logs', (req, res) => {
 
     res.send(`
         <!DOCTYPE html>
-        <html lang="en"><head><title>SYS_DUMPS</title>${uiHead}</head>
-        <body class="min-h-screen pt-28 p-4 flex flex-col items-center">
-            ${getFloatingHeader('SYS_DUMPS', true)}
+        <html lang="en"><head><title>System Logs</title>${uiHead}</head>
+        <body class="min-h-screen pt-24 pb-8 px-4 flex flex-col items-center">
+            ${getFloatingHeader('System Logs', true)}
             
             <div class="w-full max-w-7xl mt-4">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                    <div class="glass-panel animate-box flex flex-col h-[50vh] overflow-hidden border-t-4 border-t-[var(--primary)]">
-                        <div class="flex justify-between items-center p-4 border-b border-[var(--input-border)]">
-                            <h3 class="font-bold uppercase tracking-widest text-white text-xs">> ENGINE_STDOUT</h3>
-                            <button onclick="copyContent('sys-logs')" class="text-[9px] border border-[var(--primary)] hover:bg-[var(--primary)] hover:text-black px-2 py-1 transition font-bold uppercase">[ COPY ]</button>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="card animate-box flex flex-col h-[50vh] overflow-hidden">
+                        <div class="flex justify-between items-center p-4 border-b border-[var(--border)]">
+                            <h3 class="font-semibold text-[var(--text-main)] text-sm"><i class="fa-solid fa-microchip mr-2 text-[var(--text-muted)]"></i> Application Output</h3>
+                            <button onclick="copyContent('sys-logs')" class="text-xs bg-[var(--bg-color)] border border-[var(--border)] hover:bg-[var(--border)] text-[var(--text-main)] px-3 py-1.5 rounded-md transition font-medium">Copy Text</button>
                         </div>
-                        <div class="text-[11px] flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar" id="sys-logs"></div>
+                        <div class="text-[12px] flex-1 overflow-y-auto p-4 space-y-2 font-mono custom-scrollbar text-[var(--text-main)]" id="sys-logs"></div>
                     </div>
                     
-                    <div class="glass-panel animate-box flex flex-col h-[50vh] overflow-hidden border-t-4 border-t-blue-500">
-                        <div class="flex justify-between items-center p-4 border-b border-[var(--input-border)]">
-                            <h3 class="font-bold uppercase tracking-widest text-white text-xs">> NET_STDOUT</h3>
-                            <button onclick="copyContent('net-logs')" class="text-[9px] border border-[var(--primary)] hover:bg-[var(--primary)] hover:text-black px-2 py-1 transition font-bold uppercase">[ COPY ]</button>
+                    <div class="card animate-box flex flex-col h-[50vh] overflow-hidden">
+                        <div class="flex justify-between items-center p-4 border-b border-[var(--border)]">
+                            <h3 class="font-semibold text-[var(--text-main)] text-sm"><i class="fa-solid fa-network-wired mr-2 text-[var(--text-muted)]"></i> Network Events</h3>
+                            <button onclick="copyContent('net-logs')" class="text-xs bg-[var(--bg-color)] border border-[var(--border)] hover:bg-[var(--border)] text-[var(--text-main)] px-3 py-1.5 rounded-md transition font-medium">Copy Text</button>
                         </div>
-                        <div class="text-[10px] flex-1 overflow-y-auto p-4 opacity-80 break-all space-y-1 custom-scrollbar text-blue-400" id="net-logs"></div>
+                        <div class="text-[11px] flex-1 overflow-y-auto p-4 opacity-80 break-all space-y-2 font-mono custom-scrollbar text-[var(--text-main)]" id="net-logs"></div>
                     </div>
                 </div>
 
-                <div class="glass-panel animate-box p-6 border-t-4 border-t-[var(--primary)]">
-                     <h3 class="font-bold uppercase tracking-widest text-white text-xs mb-4 border-b border-[var(--input-border)] pb-2">> MATRIX_SNAPSHOTS</h3>
-                     <div id="matrix-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3"></div>
+                <div class="card animate-box p-6">
+                     <h3 class="font-semibold text-[var(--text-main)] text-sm mb-4 border-b border-[var(--border)] pb-3"><i class="fa-solid fa-camera mr-2 text-[var(--text-muted)]"></i> Execution Snapshots</h3>
+                     <div id="matrix-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4"></div>
                 </div>
             </div>
             
-            <div id="img-modal" class="fixed inset-0 bg-black/90 z-[500] hidden flex-col items-center justify-center p-4">
-                <button onclick="document.getElementById('img-modal').classList.add('hidden')" class="absolute top-4 right-4 bg-transparent border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black px-4 py-1 text-xs font-bold transition uppercase">[ CLOSE ]</button>
-                <img id="modal-img-src" src="" class="max-w-full max-h-[85vh] object-contain border-2 border-[var(--primary)] shadow-[0_0_20px_var(--primary)] filter contrast-125" />
+            <div id="img-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[500] hidden flex-col items-center justify-center p-4">
+                <button onclick="document.getElementById('img-modal').classList.add('hidden')" class="absolute top-6 right-6 bg-white/10 w-10 h-10 flex items-center justify-center rounded-full text-white hover:bg-white/20 transition"><i class="fa-solid fa-xmark"></i></button>
+                <img id="modal-img-src" src="" class="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
             </div>
 
             <script src="/socket.io/socket.io.js"></script>
@@ -1556,13 +1517,13 @@ app.get('/logs', (req, res) => {
                     grid.innerHTML = '';
                     for(let uid in matrix) {
                         matrix[uid].forEach(snap => {
-                            let isErr = snap.isError ? 'border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.3)]' : 'border-[var(--input-border)] hover:border-[var(--primary)] hover:shadow-[0_0_10px_var(--primary)]';
-                            let titleCol = snap.isError ? 'text-red-500 font-bold' : 'text-[var(--primary)] opacity-80';
-                            grid.innerHTML += \`<div class="p-2 border \${isErr} cursor-pointer transition bg-black" onclick="showImg('data:image/jpeg;base64,\${snap.img}')">
-                                <div class="text-[10px] font-bold uppercase truncate mb-1 text-white">\${uid}</div>
-                                <div class="text-[8px] \${titleCol} truncate mb-2">>\${snap.step} | \${snap.time}</div>
-                                <div class="relative overflow-hidden border border-gray-800">
-                                    <img src="data:image/jpeg;base64,\${snap.img}" class="w-full aspect-[9/16] object-cover filter contrast-125" />
+                            let isErr = snap.isError ? 'border-red-400 bg-red-50/5' : 'border-[var(--border)] bg-[var(--bg-color)] hover:border-[var(--primary)]';
+                            let titleCol = snap.isError ? 'text-red-500' : 'text-[var(--text-muted)]';
+                            grid.innerHTML += \`<div class="rounded-xl p-3 border \${isErr} cursor-pointer transition-all duration-200 hover:shadow-md" onclick="showImg('data:image/jpeg;base64,\${snap.img}')">
+                                <div class="text-[11px] font-semibold truncate mb-1 text-[var(--text-main)]">\${uid}</div>
+                                <div class="text-[9px] \${titleCol} truncate mb-2 font-mono">\${snap.step} | \${snap.time}</div>
+                                <div class="relative overflow-hidden rounded-lg border border-[var(--border)]">
+                                    <img src="data:image/jpeg;base64,\${snap.img}" class="w-full aspect-[9/16] object-cover" />
                                 </div>
                             </div>\`;
                         });
@@ -1575,7 +1536,7 @@ app.get('/logs', (req, res) => {
                 }
                 function copyContent(id) {
                     navigator.clipboard.writeText(document.getElementById(id).innerText);
-                    showSysModal({title: "SYS.COPY", msg: "DATA COPIED TO CLIPBOARD."});
+                    showSysModal({title: "Copied", msg: "Data copied to clipboard."});
                 }
             </script>
         </body></html>
@@ -1607,16 +1568,16 @@ setInterval(() => {
         let percent = Math.max(0, Math.min(100, ((totalMs - diff) / totalMs) * 100));
 
         if(timerObj.isSub) {
-            if (isRunning) remainingStr = '<span class="text-[var(--primary)] font-bold glitch-text" data-text="EXECUTING...">EXECUTING...</span>';
+            if (isRunning) remainingStr = '<span class="text-[var(--primary)] font-medium flex items-center text-xs"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Processing</span>';
             else {
-                if(diff > 0) remainingStr = '<span class="opacity-90 font-bold">T-' + Math.floor(diff/60000) + 'm ' + Math.floor((diff%60000)/1000) + 's</span>';
-                else remainingStr = '<span class="text-yellow-500 font-bold animate-pulse">BOOT_SEQ_INIT...</span>';
+                if(diff > 0) remainingStr = '<span class="text-[var(--text-muted)] font-medium text-xs"><i class="fa-regular fa-clock mr-1"></i> ' + Math.floor(diff/60000) + 'm ' + Math.floor((diff%60000)/1000) + 's</span>';
+                else remainingStr = '<span class="text-orange-500 font-medium text-xs">Initializing...</span>';
             }
         } else {
-            if(!timerObj.autoActivate) remainingStr = '<span class="text-red-500 font-bold">HALTED</span>';
-            else if (isRunning) remainingStr = '<span class="text-[var(--primary)] font-bold glitch-text" data-text="EXECUTING...">EXECUTING...</span>';
-            else if (diff > 0) remainingStr = '<span class="opacity-90 font-bold">T-' + Math.floor(diff/60000) + 'm ' + Math.floor((diff%60000)/1000) + 's</span>';
-            else remainingStr = '<span class="text-yellow-500 font-bold animate-pulse">BOOT_SEQ_INIT...</span>';
+            if(!timerObj.autoActivate) remainingStr = '<span class="text-red-500 font-medium text-xs">Suspended</span>';
+            else if (isRunning) remainingStr = '<span class="text-[var(--primary)] font-medium flex items-center text-xs"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Processing</span>';
+            else if (diff > 0) remainingStr = '<span class="text-[var(--text-muted)] font-medium text-xs"><i class="fa-regular fa-clock mr-1"></i> ' + Math.floor(diff/60000) + 'm ' + Math.floor((diff%60000)/1000) + 's</span>';
+            else remainingStr = '<span class="text-orange-500 font-medium text-xs">Initializing...</span>';
         }
         
         uiData[uid] = { name: timerObj.name, remaining: remainingStr, isRunning, autoActivate: timerObj.autoActivate !== false, percent: percent };
@@ -1625,7 +1586,7 @@ setInterval(() => {
 }, 1000);
 
 function appendLog(html, type = 'sys') {
-    const fullLog = `<div class="pb-1 mb-1 border-b border-[var(--input-border)]"><span class="text-[var(--primary)] px-1 mr-1 text-[9px] bg-black border border-[var(--input-border)]">[${getPKTTime()}]</span> ${html}</div>`;
+    const fullLog = `<div class="pb-2 mb-2 border-b border-[var(--border)]"><span class="text-[var(--text-muted)] text-[10px] bg-[var(--bg-color)] px-1.5 py-0.5 rounded mr-2 border border-[var(--border)]">${getPKTTime()}</span> <span class="text-sm">${html}</span></div>`;
     if (type === 'net') { networkLogs.push(fullLog); if(networkLogs.length > 500) networkLogs.shift(); } 
     else { systemLogs.push(fullLog); if(systemLogs.length > 300) systemLogs.shift(); }
     io.emit('cron_log', { html: fullLog, type });
@@ -1693,24 +1654,24 @@ async function executeEngineWithRetry(uid, forcedName = null) {
     while (attempt < maxRetries && !success) {
         attempt++;
         try {
-            if(attempt > 1) appendLog(`<span class="text-yellow-500 font-bold">> SYSTEM_REBOOT (Attempt ${attempt}/${maxRetries})...</span>`);
+            if(attempt > 1) appendLog(`<span style="color: #f59e0b; font-weight: 500;">Restarting task (Attempt ${attempt}/${maxRetries})...</span>`);
             await runGhostActivator(uid, name);
             success = true; 
         } catch (error) {
             if (attempt < maxRetries) {
-                appendLog(`<span class="text-red-500 font-bold">> EXEC_FAILED. REBOOTING_IN_5S...</span>`);
+                appendLog(`<span style="color: #ef4444; font-weight: 500;">Execution failed. Retrying in 5 seconds...</span>`);
                 await new Promise(r => setTimeout(r, 5000));
             } else {
-                appendLog(`<span class="text-red-600 font-bold uppercase">> FATAL_ERR. TASK_ABORTED.</span>`);
+                appendLog(`<span style="color: #ef4444; font-weight: 600;">Task completely failed after multiple attempts.</span>`);
             }
         }
     }
 
     if(target && !target.isSub && target.autoActivate) {
-        appendLog(`<span class="opacity-80 font-bold text-white">> AUTO_RESUME SCHEDULED (T-${target.intervalMins}m)...</span>`);
+        appendLog(`<span style="color: var(--text-muted); font-size: 0.875rem;">Next execution scheduled in ${target.intervalMins} minutes.</span>`);
         scheduleNextRun(uid);
     } else if(target && target.isSub) {
-        appendLog(`<span class="opacity-80 font-bold text-white">> SUB_RESUME SCHEDULED (T-${target.intervalMins}m)...</span>`);
+        appendLog(`<span style="color: var(--text-muted); font-size: 0.875rem;">Subscription resume scheduled in ${target.intervalMins} minutes.</span>`);
         scheduleNextRun(uid);
     }
 }
@@ -1742,7 +1703,7 @@ setTimeout(async () => {
     try {
         const { data: users } = await supabase.from('targets').select('*');
         if (users && users.length > 0) {
-            appendLog('<span class="text-[var(--primary)] opacity-90 font-bold">> RESTORING_DATABASE_STATE...</span>');
+            appendLog('<span style="color: var(--primary); font-weight: 500;">Restoring database state and tasks...</span>');
             users.forEach((u, index) => {
                 setTimeout(() => startUIDCycle(u.uid, u.name, u.interval_mins, u.auto_activate, u.auto_activate, false), index * 10000);
             });
@@ -1763,7 +1724,7 @@ setTimeout(async () => {
 // CHROMIUM ENGINE (PUPPETEER)
 // ==========================================
 async function runGhostActivator(uid, name) {
-    if(engineStatus[uid]) throw new Error("Engine already running for this UID");
+    if(engineStatus[uid]) throw new Error("Task already running for this UID");
     let browser;
     engineStatus[uid] = true;
     
@@ -1780,20 +1741,20 @@ async function runGhostActivator(uid, name) {
     fs.writeFileSync(dumpLogFile, `=== DEEP DUMP FOR ${uid} (PAYLOADS & COOKIES) ===\n\n`);
 
     const sysLog = (msg) => {
-        appendLog(`<b class="text-white">UID:[${uid}]</b> ${msg}`); 
+        appendLog(`<strong>[${uid}]</strong> ${msg}`); 
         fs.appendFileSync(actionLogFile, `[${getPKTTime()}] ${msg.replace(/<[^>]*>?/gm, '')}\n`);
     };
     const netLog = (msg) => {
-        appendLog(`<b class="text-blue-400">NET:[${uid}]</b> ${msg}`, 'net');
+        appendLog(`<span style="color: #64748b;">[NET]</span> ${msg}`, 'net');
         fs.appendFileSync(netLogFile, `[${getPKTTime()}] ${msg.replace(/<[^>]*>?/gm, '')}\n`);
     };
 
     try {
-        sysLog('<span class="text-[var(--primary)] font-bold">> ENGINE_BOOT_SEQ_INIT...</span>'); 
+        sysLog('<span style="color: var(--primary); font-weight: 500;">Starting processing sequence...</span>'); 
         
         try {
             await sendTgRequest("sendSticker", { chat_id: TG_CHAT_ID, sticker: TG_LIVE_STICKER_ID });
-            await sendTelegramText(`🚀 *[ ${uid} ] ACTIVATION STARTED*\n\n[▓▓▓▓░░░░░░] 40%\n\n⏱️ PKT Time: ${getPKTTime()}`);
+            await sendTelegramText(`🚀 *[ ${uid} ] ACTION INITIATED*\n\n[▓▓▓▓░░░░░░] 40%\n\n⏱️ PKT Time: ${getPKTTime()}`);
         } catch(e) {}
 
         let execPath = undefined;
@@ -1803,7 +1764,6 @@ async function runGhostActivator(uid, name) {
             execPath = process.env.PUPPETEER_EXECUTABLE_PATH;
         }
 
-        // HEAVY OPTIMIZATION ARGS APPLIED HERE FOR RESOURCE ERROR FIX
         browser = await puppeteer.launch({
             args: [
                 '--no-sandbox', 
@@ -1811,11 +1771,11 @@ async function runGhostActivator(uid, name) {
                 '--disable-blink-features=AutomationControlled', 
                 '--disable-dev-shm-usage', 
                 '--window-size=360,640',
-                '--single-process',          // FIX FOR PTHREAD_CREATE RESOURCE ERROR
-                '--no-zygote',               // SAVES RAM
+                '--single-process',
+                '--no-zygote',
                 '--disable-gpu',
                 '--disable-software-rasterizer',
-                '--disable-features=dbus'    // FIX FOR DBUS ERRORS
+                '--disable-features=dbus'
             ],
             headless: 'new',
             executablePath: execPath 
@@ -1834,7 +1794,7 @@ async function runGhostActivator(uid, name) {
                 io.emit('live_frame', { uid, frame: evt.data, timestamp: Date.now() });
             }
             if(recordingStatus[uid]) {
-                recordingFrames[uid].push(evt.data); // Collect frames for GIF recording
+                recordingFrames[uid].push(evt.data);
             }
             await cdpClient.send('Page.screencastFrameAck', { sessionId: evt.sessionId }).catch(()=>{});
         });
@@ -1855,7 +1815,7 @@ async function runGhostActivator(uid, name) {
                     const newPage = await target.page();
                     if (newPage && newPage.url() !== 'about:blank') {
                         setTimeout(() => newPage.close().catch(() => {}), 500);
-                        sysLog('<span class="text-red-500 font-bold">> POPUP_INTERCEPTED & TERMINATED.</span>');
+                        sysLog('<span style="color: #ef4444;">Popup intercepted and closed.</span>');
                     }
                 } catch(e) {}
             }
@@ -1877,7 +1837,7 @@ async function runGhostActivator(uid, name) {
             if (rType === 'media') return req.abort(); 
             if (req.isNavigationRequest() && req.frame() === page.mainFrame()) {
                 if (!urlStr.includes('unlockffbeta.com') && !urlStr.includes('google.com')) {
-                    netLog(`<span class="text-red-500 font-bold">> HIJACK_BLOCKED: ${urlStr.substring(0, 40)}...</span>`);
+                    netLog(`<span style="color: #ef4444;">Navigation Blocked: ${urlStr.substring(0, 40)}...</span>`);
                     return req.abort('aborted'); 
                 }
             }
@@ -1897,43 +1857,68 @@ async function runGhostActivator(uid, name) {
 
             if(rType === 'xhr' || rType === 'fetch' || rType === 'document') {
                 if(!['google-analytics', 'doubleclick', 'facebook', 'bing'].some(j => urlStr.includes(j))) {
-                    let statusColor = status >= 400 ? 'text-red-500' : (status >= 300 ? 'text-yellow-500' : 'text-[var(--primary)]');
-                    netLog(`<div class="bg-black p-1 border-l-2 border-[var(--input-border)] mb-1"><span class="${statusColor} font-bold mr-2">[${status}]</span> <span class="opacity-80">${urlStr.substring(0,60)}...</span></div>`);
+                    let statusColor = status >= 400 ? 'color: #ef4444;' : (status >= 300 ? 'color: #f59e0b;' : 'color: var(--primary);');
+                    netLog(`<div style="background: var(--bg-color); padding: 4px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 11px;"><span style="font-weight: 600; ${statusColor} margin-right: 8px;">[${status}]</span> <span style="opacity: 0.8;">${urlStr.substring(0,60)}...</span></div>`);
                 }
             }
         });
 
-        // Use more realistic user agent to pass CF
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         page.on('dialog', async dialog => { await dialog.dismiss(); }); 
 
         await page.goto('https://unlockffbeta.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-        sysLog('<span class="text-blue-400 font-bold">> TARGET_LOCKED. DOM_INJECTED.</span>');
+        sysLog('<span style="color: var(--primary);">Connected to target page.</span>');
         await saveMatrixScreen("INIT_DOM_LOAD");
         
         // ==========================================
-        // CLOUDFLARE ANTI-BOT BYPASS LOOP (FIXED)
+        // SMART CLOUDFLARE BYPASS LOGIC
         // ==========================================
-        sysLog('<span class="text-yellow-500 font-bold">> CHECKING_SECURITY_WALL...</span>');
-        for(let c = 0; c < 15; c++) {
+        sysLog('<span style="color: #f59e0b; font-weight: 500;">Checking security protocols...</span>');
+        for(let c = 0; c < 20; c++) {
+            const pageTitle = await page.title();
             const text = await page.evaluate(() => document.body.innerText || '');
-            if (!text.toLowerCase().includes('security verification') && !text.toLowerCase().includes('just a moment')) {
-                break; // Cloudflare passed
+            
+            // Check if passed CF
+            if (!text.toLowerCase().includes('security verification') && !pageTitle.toLowerCase().includes('just a moment')) {
+                break;
             }
-            sysLog('<span class="text-yellow-500 font-bold">> BYPASSING_CLOUDFLARE_NODE ['+(c+1)+'/15]...</span>');
+            
+            sysLog(`<span style="color: #f59e0b;">Evaluating challenge [${c+1}/20]...</span>`);
             try {
-                // Find and click the turnstile challenge iframe
-                const cfIframe = await page.$('iframe');
-                if(cfIframe) {
-                    const box = await cfIframe.boundingBox();
-                    if(box) {
-                        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {steps: 5});
-                        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                        sysLog('<span class="text-yellow-500 font-bold">> CLOUDFLARE_WIDGET_CLICKED.</span>');
+                // Method 1: Target Turnstile widget in iframes
+                let clicked = false;
+                const frames = page.frames();
+                for (const frame of frames) {
+                    if (frame.url().includes('cloudflare') || frame.url().includes('turnstile')) {
+                        const widget = await frame.$('.cb-tc, input[type="checkbox"], #challenge-stage');
+                        if (widget) {
+                            await widget.hover();
+                            await page.mouse.down();
+                            await new Promise(r => setTimeout(r, 50 + Math.random() * 50));
+                            await page.mouse.up();
+                            sysLog('<span style="color: #10b981;">Challenge widget interacted successfully.</span>');
+                            clicked = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Method 2: Offset click if element not found in frame directly
+                if(!clicked) {
+                    const cfIframe = await page.$('iframe[src*="cloudflare"], iframe[src*="turnstile"]');
+                    if(cfIframe) {
+                        const box = await cfIframe.boundingBox();
+                        if(box) {
+                            // Smart offset calculation for the checkbox position
+                            const x = box.x + 30 + Math.random() * 20; 
+                            const y = box.y + box.height / 2;
+                            await page.mouse.move(x, y, {steps: 10});
+                            await page.mouse.click(x, y, { delay: 100 });
+                        }
                     }
                 }
             } catch(e) {}
-            await new Promise(r => setTimeout(r, 3000));
+            await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
         }
 
         let safetyCounter = 0;
@@ -1963,7 +1948,7 @@ async function runGhostActivator(uid, name) {
                 });
                 return killed;
             });
-            if(popupDestroyed) { sysLog('<span class="text-yellow-500 font-bold">> OVERLAY_REMOVED.</span>'); }
+            if(popupDestroyed) { sysLog('<span style="color: #f59e0b;">Overlay removed.</span>'); }
 
             await page.evaluate(() => {
                 const reloadBtn = Array.from(document.querySelectorAll('button, a, div[role="button"]')).find(b => b.innerText && b.innerText.toLowerCase().includes('i fixed it'));
@@ -1976,7 +1961,7 @@ async function runGhostActivator(uid, name) {
             });
 
             if (isInitializing) {
-                sysLog('<span class="text-yellow-500 font-bold">> SPIN_LOCK DETECTED. [▓▓▓▓▓▓▓░░░] 70%</span>');
+                sysLog('<span style="color: #f59e0b;">Initialization in progress... [▓▓▓▓▓▓▓░░░] 70%</span>');
                 await saveMatrixScreen("WAITING_INITIALIZATION");
                 await new Promise(r => setTimeout(r, 2000));
                 continue; 
@@ -2011,7 +1996,7 @@ async function runGhostActivator(uid, name) {
             });
 
             if (resultData.success) {
-                sysLog('<span class="text-[var(--primary)] font-bold">> TARGET_BYPASSED. SUCCESS! [██████████] 100%</span>');
+                sysLog('<span style="color: #10b981; font-weight: 600;">Operation successful. Process completed! [██████████] 100%</span>');
                 await saveMatrixScreen("SUCCESS_VERIFIED");
 
                 let extractedMs = (resultData.h * 60 * 60 * 1000) + (resultData.m * 60 * 1000) + (resultData.s * 1000);
@@ -2024,26 +2009,24 @@ async function runGhostActivator(uid, name) {
                     if(!activeTimers[uid].totalTime) activeTimers[uid].totalTime = 0;
                     activeTimers[uid].totalTime += extractedMs;
                     activeTimers[uid].intervalMins = Math.floor(safeIntervalMs / 60000);
-                    sysLog(`TTL: ${resultData.timeStr}. CRON_SET: ${activeTimers[uid].intervalMins}m.`);
+                    sysLog(`Session valid for: ${resultData.timeStr}. Next schedule in: ${activeTimers[uid].intervalMins}m.`);
                 }
 
                 // =====================================
                 // 15-SECOND GIF/VIDEO RECORDING LOGIC
                 // =====================================
                 try {
-                    sysLog('> INITIATING 15S TELEMETRY CAPTURE...');
+                    sysLog('Starting telemetry recording (15s)...');
                     recordingStatus[uid] = true;
                     
-                    // Allow CDP to capture frames for exactly 15 seconds
                     await new Promise(resolve => setTimeout(resolve, 15000));
                     
                     recordingStatus[uid] = false;
-                    sysLog('> CAPTURE DONE. COMPILING_DATA...');
+                    sysLog('Recording completed. Compiling data...');
 
                     const recDir = path.join(__dirname, `rec_tmp_${uid}_${Date.now()}`);
                     if (!fs.existsSync(recDir)) fs.mkdirSync(recDir, { recursive: true });
 
-                    // Save all collected frames as JPEGs
                     let frameCount = 0;
                     recordingFrames[uid].forEach((base64Str, i) => {
                         const filePath = path.join(recDir, `frame_${i.toString().padStart(4, '0')}.jpg`);
@@ -2051,37 +2034,34 @@ async function runGhostActivator(uid, name) {
                         frameCount++;
                     });
 
-                    let caption = `✅ *Target Activated!*\n\n👤 Name: ${name}\n🆔 UID: \`${uid}\`\n⏱️ Time Granted: ${resultData.timeStr}\n🚀 System: Online`;
+                    let caption = `✅ *Session Active*\n\n👤 Name: ${name}\n🆔 UID: \`${uid}\`\n⏱️ Duration: ${resultData.timeStr}`;
 
                     if(frameCount > 0) {
                         try {
                             const outVid = path.join(recDir, 'output.mp4');
-                            // Use ffmpeg to stitch frames into an MP4 (Telegram treats this as a GIF if sent via sendAnimation)
                             execSync(`ffmpeg -y -framerate 4 -i ${recDir}/frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p ${outVid} > /dev/null 2>&1`);
                             
-                            sysLog('> DISPATCHING_FEED TO TG_NODE...');
+                            sysLog('Uploading confirmation to Telegram...');
                             await sendTgRequest("sendAnimation", { chat_id: TG_CHAT_ID, caption: caption, parse_mode: "Markdown" }, { fieldName: 'animation', buffer: fs.readFileSync(outVid), filename: 'proof.mp4' });
                         } catch(err) {
-                            sysLog('<span class="text-yellow-500">> FFMPEG_MISSING. SENDING_STILL_FRAME.</span>');
+                            sysLog('<span style="color: #f59e0b;">Video compilation failed. Sending still image.</span>');
                             await sendTelegramScreenshot(lastStreamFrame, uid, name, false, caption);
                         }
                     } else {
                         await sendTelegramScreenshot(lastStreamFrame, uid, name, false, caption);
                     }
 
-                    // Clean up temp directory
                     try { fs.rmSync(recDir, { recursive: true, force: true }); } catch(e){}
-                    recordingFrames[uid] = []; // clear memory
+                    recordingFrames[uid] = [];
 
-                    // Initialize the Live Tracker message and store ID
-                    let liveInitMsg = `⏳ *LIVE TRACKER INIT...*\nUID: \`${uid}\``;
+                    let liveInitMsg = `⏳ *Tracker Initiated*\nUID: \`${uid}\``;
                     let tgRes = await sendTgRequest("sendMessage", { chat_id: TG_CHAT_ID, text: liveInitMsg, parse_mode: "Markdown" });
                     
                     if (tgRes && tgRes.result && tgRes.result.message_id) {
                         if (activeTimers[uid]) activeTimers[uid].tgMsgId = tgRes.result.message_id;
                     }
                 } catch(e) {
-                    console.log("TG Recording Push Error:", e.message);
+                    console.log("Telemetry Error:", e.message);
                 }
                 
                 return true; 
@@ -2100,7 +2080,7 @@ async function runGhostActivator(uid, name) {
                 }, uid);
                 if (injected) { 
                     uidInjected = true; 
-                    sysLog('<span class="text-yellow-500 font-bold">> UID_INJECTED. [▓▓▓▓▓░░░░░] 50%</span>');
+                    sysLog('<span style="color: var(--primary);">UID entered successfully. [▓▓▓▓▓░░░░░] 50%</span>');
                     await saveMatrixScreen("UID_TYPED");
                     await new Promise(r => setTimeout(r, 1000)); 
                 }
@@ -2137,7 +2117,7 @@ async function runGhostActivator(uid, name) {
             });
 
             if (clicked) {
-                sysLog(`<span class="text-white">> TRIGGER: "${clicked}"</span>`);
+                sysLog(`Action registered: "${clicked}"`);
                 await saveMatrixScreen("ACTION_CLICKED");
                 await new Promise(r => setTimeout(r, 2000));
             } else {
@@ -2150,13 +2130,13 @@ async function runGhostActivator(uid, name) {
             });
             if(isBlocked) {
                 await saveMatrixScreen("ERROR_INVALID_ID", true);
-                throw new Error("Blocked by Target (Invalid ID)");
+                throw new Error("Target blocked the request (Invalid ID).");
             }
         }
         await saveMatrixScreen("ERROR_TIMEOUT", true);
-        throw new Error("Execution Timeout! Target flow got stuck.");
+        throw new Error("Process timed out.");
     } catch (error) {
-        sysLog(`<span class="text-red-500 font-bold uppercase">> ERR: ${error.message}</span>`);
+        sysLog(`<span style="color: #ef4444; font-weight: 500;">Process Error: ${error.message}</span>`);
         try {
             await sendTelegramScreenshot(lastStreamFrame, uid, name, true); 
         } catch(e){}
@@ -2173,7 +2153,7 @@ async function runGhostActivator(uid, name) {
 
         if (browser) await browser.close();
         engineStatus[uid] = false; 
-        sysLog('<span class="opacity-50 text-red-500 font-bold uppercase">> ENGINE_TERMINATED.</span>');
+        sysLog('<span style="color: var(--text-muted);">Process ended.</span>');
         
         try {
             if(fs.existsSync(actionLogFile)) {
@@ -2195,7 +2175,7 @@ async function runGhostActivator(uid, name) {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log('\n=========================================');
-    console.log(`⚡ ROMEO ROOT SERVER INITIALIZED`);
+    console.log(`⚡ SERVER INITIALIZED`);
     console.log(`📡 ENVIRONMENT: ${HOST_ENV}`);
     console.log(`👉 Front: http://localhost:${PORT}/`);
     console.log('=========================================\n');
